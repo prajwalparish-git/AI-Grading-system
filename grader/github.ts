@@ -1,9 +1,19 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 const GITHUB_TOKEN = process.env.GITHUB_PAT || process.env.GITHUB_TOKEN;
+
+// ── Security: Resource Exhaustion Limits ────────────────────────────────────
+/** Maximum number of source files to ingest from a single repository. */
+const MAX_FILE_COUNT = 500;
+/** Maximum individual file size to fetch (100 KB). Files larger are skipped. */
+const MAX_FILE_SIZE_BYTES = 100_000;
+/** Maximum total concatenated output size (2 MB). Ingestion stops beyond this. */
+const MAX_TOTAL_OUTPUT_BYTES = 2_000_000;
+/** Timeout for git clone operations (30 seconds). */
+const GIT_CLONE_TIMEOUT_MS = 30_000;
 
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -112,6 +122,11 @@ function shouldIgnoreFile(filePath: string): boolean {
 
 /**
  * Fetches, filters, and flattens a GitHub repository's source code into a formatted single string for LLM processing.
+ * 
+ * Security hardening:
+ *  - MAX_FILE_COUNT prevents processing repos with thousands of files.
+ *  - MAX_FILE_SIZE_BYTES prevents fetching individual huge files.
+ *  - MAX_TOTAL_OUTPUT_BYTES caps total memory used by the concatenated output.
  *
  * @param githubUrl Public GitHub repository URL (e.g. https://github.com/owner/repo)
  * @returns Formatted code string with clear file demarcations
@@ -155,10 +170,11 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
       throw new Error(`Invalid repository tree structure received for ${owner}/${repo}`);
     }
 
-    // 3. Filter tree for code files
-    const codeFiles = treeData.tree.filter(
-      (item) => item.type === 'blob' && !shouldIgnoreFile(item.path)
-    );
+    // 3. Filter tree for code files, enforce MAX_FILE_COUNT
+    const codeFiles = treeData.tree
+      .filter((item) => item.type === 'blob' && !shouldIgnoreFile(item.path))
+      .filter((item) => !item.size || item.size <= MAX_FILE_SIZE_BYTES)
+      .slice(0, MAX_FILE_COUNT);
 
     if (codeFiles.length === 0) {
       return `// --- Repository: ${owner}/${repo} ---\n// No matching code files found.`;
@@ -166,8 +182,15 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
 
     // 4. Fetch raw contents and flatten into single LLM prompt string
     const flattenedChunks: string[] = [];
+    let totalBytes = 0;
 
     for (const file of codeFiles) {
+      // Guard: stop if total output exceeds MAX_TOTAL_OUTPUT_BYTES
+      if (totalBytes >= MAX_TOTAL_OUTPUT_BYTES) {
+        flattenedChunks.push(`\n// --- TRUNCATED: Output limit of ${MAX_TOTAL_OUTPUT_BYTES} bytes reached ---\n`);
+        break;
+      }
+
       try {
         const rawRes = await fetch(
           `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${file.path}`,
@@ -176,7 +199,15 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
 
         if (rawRes.ok) {
           const fileContent = await rawRes.text();
-          flattenedChunks.push(`// --- File: ${file.path} ---\n${fileContent.trim()}\n`);
+
+          // Skip individual files that exceed the per-file size limit
+          if (Buffer.byteLength(fileContent, 'utf8') > MAX_FILE_SIZE_BYTES) {
+            continue;
+          }
+
+          const chunk = `// --- File: ${file.path} ---\n${fileContent.trim()}\n`;
+          totalBytes += Buffer.byteLength(chunk, 'utf8');
+          flattenedChunks.push(chunk);
         }
       } catch (fileErr) {
         console.warn(`[GitHub Scraper] Could not fetch raw content for ${file.path}:`, fileErr);
@@ -248,16 +279,31 @@ export async function fetchRepoContext(repoUrl: string): Promise<{
   return { tree: treeText, keyFiles, commits };
 }
 
+/**
+ * SECURITY FIX: Replaced execSync (shell injection vulnerable) with execFileSync.
+ * Arguments are passed as an array so no shell is spawned and user-controlled
+ * input in repoUrl cannot break out into arbitrary commands.
+ */
 export async function runGitleaks(repoUrl: string): Promise<string> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'grader-'));
   try {
-    execSync(`git clone --depth=1 --quiet "${repoUrl}" "${tmpDir}/repo"`, { stdio: 'pipe', timeout: 60_000 });
+    // execFileSync passes args as array — no shell spawned, no injection possible
+    execFileSync('git', ['clone', '--depth=1', '--quiet', repoUrl, path.join(tmpDir, 'repo')], {
+      stdio: 'pipe',
+      timeout: GIT_CLONE_TIMEOUT_MS,
+    });
     const reportPath = path.join(tmpDir, 'gitleaks.json');
     try {
-      execSync(
-        `gitleaks detect --source="${tmpDir}/repo" --report-format=json --report-path="${reportPath}" --no-git`,
-        { stdio: 'pipe', timeout: 30_000 }
-      );
+      execFileSync('gitleaks', [
+        'detect',
+        `--source=${path.join(tmpDir, 'repo')}`,
+        '--report-format=json',
+        `--report-path=${reportPath}`,
+        '--no-git',
+      ], {
+        stdio: 'pipe',
+        timeout: GIT_CLONE_TIMEOUT_MS,
+      });
       return '[]';
     } catch {
       if (fs.existsSync(reportPath)) return fs.readFileSync(reportPath, 'utf8');

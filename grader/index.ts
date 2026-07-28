@@ -9,13 +9,13 @@
  */
 
 import 'dotenv/config';
-import { createServerClient } from '../lib/supabase/server';
+import { createAdminClient } from '../lib/supabase/server';
 import { cloneAndParseRepo } from './github';
 import { evaluateCodeWithGroq } from './groq';
 
 async function main() {
   console.log('🎓 AI Grader starting...\n');
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
 
   const { data: applicants, error: fetchError } = await supabase
     .from('applicants')

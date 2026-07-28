@@ -164,10 +164,10 @@ export default function SubmitForm() {
         </CardContent>
         <CardFooter className="flex flex-col sm:flex-row gap-3 pt-2">
           <Button
-            onClick={() => router.push(`/admin/submissions/${successResult.applicantId}`)}
+            onClick={() => router.push(`/results/${successResult.applicantId}`)}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs h-10"
           >
-            View Applicant Report Card <ArrowRight className="ml-2 h-4 w-4" />
+            View Your Results <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
           <Button
             variant="outline"

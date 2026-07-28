@@ -1,31 +1,43 @@
+/**
+ * Unified Database Types — Model A
+ *
+ * Canonical tables: applicants → submissions → evaluations
+ * This file MUST mirror db/schema.sql exactly.
+ */
+
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
+
+export type ApplicantStatus = 'pending' | 'grading' | 'completed' | 'error'
 
 export interface Database {
   public: {
     Tables: {
-      users: {
+      applicants: {
         Row: {
           id: string
-          email: string
           name: string
-          role: 'student' | 'admin'
-          cohort: string | null
+          email: string
+          github_url: string
+          language: string
+          status: ApplicantStatus
           created_at: string
         }
         Insert: {
-          id: string
-          email: string
+          id?: string
           name: string
-          role?: 'student' | 'admin'
-          cohort?: string | null
+          email: string
+          github_url: string
+          language: string
+          status?: ApplicantStatus
           created_at?: string
         }
         Update: {
           id?: string
-          email?: string
           name?: string
-          role?: 'student' | 'admin'
-          cohort?: string | null
+          email?: string
+          github_url?: string
+          language?: string
+          status?: ApplicantStatus
           created_at?: string
         }
         Relationships: []
@@ -33,81 +45,66 @@ export interface Database {
       submissions: {
         Row: {
           id: string
-          user_id: string
+          applicant_id: string
           repo_url: string
-          demo_url: string | null
-          answers: Json
-          status: 'draft' | 'submitted' | 'graded'
-          submitted_at: string | null
-          created_at: string
-          updated_at: string
+          raw_code_text: string | null
+          submitted_at: string
         }
         Insert: {
           id?: string
-          user_id: string
+          applicant_id: string
           repo_url: string
-          demo_url?: string | null
-          answers?: Json
-          status?: 'draft' | 'submitted' | 'graded'
-          submitted_at?: string | null
-          created_at?: string
-          updated_at?: string
+          raw_code_text?: string | null
+          submitted_at?: string
         }
         Update: {
           id?: string
-          user_id?: string
+          applicant_id?: string
           repo_url?: string
-          demo_url?: string | null
-          answers?: Json
-          status?: 'draft' | 'submitted' | 'graded'
-          submitted_at?: string | null
-          created_at?: string
-          updated_at?: string
+          raw_code_text?: string | null
+          submitted_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'submissions_user_id_fkey'
-            columns: ['user_id']
-            isOneToOne: true
-            referencedRelation: 'users'
+            foreignKeyName: 'submissions_applicant_id_fkey'
+            columns: ['applicant_id']
+            isOneToOne: false
+            referencedRelation: 'applicants'
             referencedColumns: ['id']
           }
         ]
       }
-      grades: {
+      evaluations: {
         Row: {
           id: string
           submission_id: string
-          criterion: string
-          score: number
-          max: number
-          rationale: string | null
-          model: string | null
-          graded_at: string
+          overall_score: number | null
+          criteria_scores: Json
+          ai_summary: string | null
+          vulnerabilities: Json
+          evaluated_at: string
         }
         Insert: {
           id?: string
           submission_id: string
-          criterion: string
-          score: number
-          max: number
-          rationale?: string | null
-          model?: string | null
-          graded_at?: string
+          overall_score?: number | null
+          criteria_scores?: Json
+          ai_summary?: string | null
+          vulnerabilities?: Json
+          evaluated_at?: string
         }
         Update: {
           id?: string
           submission_id?: string
-          criterion?: string
-          score?: number
-          max?: number
-          rationale?: string | null
-          model?: string | null
-          graded_at?: string
+          overall_score?: number | null
+          criteria_scores?: Json
+          ai_summary?: string | null
+          vulnerabilities?: Json
+          evaluated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'grades_submission_id_fkey'
+            foreignKeyName: 'evaluations_submission_id_fkey'
             columns: ['submission_id']
             isOneToOne: false
             referencedRelation: 'submissions'
@@ -118,31 +115,31 @@ export interface Database {
       integrity_events: {
         Row: {
           id: string
-          user_id: string
-          type: 'paste' | 'copy' | 'cut' | 'blur' | 'fast_paste'
+          applicant_id: string
+          type: string
           payload: Json | null
-          at: string
+          created_at: string
         }
         Insert: {
           id?: string
-          user_id: string
-          type: 'paste' | 'copy' | 'cut' | 'blur' | 'fast_paste'
+          applicant_id: string
+          type: string
           payload?: Json | null
-          at?: string
+          created_at?: string
         }
         Update: {
           id?: string
-          user_id?: string
-          type?: 'paste' | 'copy' | 'cut' | 'blur' | 'fast_paste'
+          applicant_id?: string
+          type?: string
           payload?: Json | null
-          at?: string
+          created_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'integrity_events_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: 'integrity_events_applicant_id_fkey'
+            columns: ['applicant_id']
             isOneToOne: false
-            referencedRelation: 'users'
+            referencedRelation: 'applicants'
             referencedColumns: ['id']
           }
         ]
@@ -152,13 +149,10 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      is_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      applicant_status: ApplicantStatus
     }
     CompositeTypes: {
       [_ in never]: never

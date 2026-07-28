@@ -2,4 +2,4 @@
 export { createClient } from './supabase/client'
 
 // Server-only clients — only import from Server Components, Route Handlers, middleware
-export { createServerSupabaseClient, createServiceClient } from './supabase/server'
+export { createServerSupabaseClient, createServiceClient, createAdminClient } from './supabase/server'
