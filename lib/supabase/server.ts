@@ -1,36 +1,31 @@
-import { createServerClient } from '@supabase/ssr'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
-import type { Database } from '../database.types'
+import { createClient } from '@supabase/supabase-js';
 
-// Server Component / Route Handler client (respects Auth cookies)
-export async function createServerSupabaseClient() {
-  const cookieStore = await cookies()
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) {
-          try {
-            toSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
-            // Called from a Server Component — middleware will handle session refresh
-          }
-        },
-      },
-    }
-  )
+/**
+ * Creates a server-side Supabase client with the Service Role key.
+ * This client bypasses Row Level Security (RLS) policies and is intended
+ * for backend tasks like AI grading, syncing data, and admin operations.
+ * 
+ * Note: Never expose the Service Role key to the frontend.
+ */
+export function createServerClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error(
+      'Environment variables NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.'
+    );
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
 }
 
-// Service-role client — bypasses RLS. Server-side only.
-export function createServiceClient() {
-  return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
+export const createServerSupabaseClient = createServerClient;
+export const createServiceClient = createServerClient;
+

@@ -1,93 +1,136 @@
-import Groq from 'groq-sdk'
-import { RUBRIC, type Criterion } from './rubric'
+import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY || '',
+});
 
-export interface GradeResult {
-  criterion: string
-  score: number
-  max: number
-  rationale: string
+export interface Vulnerability {
+  id: string;
+  title: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  line: number;
+  analysis: string;
+  suggested_fix: string;
 }
 
-const SYSTEM_PROMPT = `You are an expert technical assessor grading student coding projects for a university coding club admissions process.
-You will be given evidence (repo files, commit history, gitleaks output, written answers) and a rubric.
-Return ONLY a valid JSON array with one object per criterion: [{criterion, score, max, rationale}].
-- score must be a number between 0 and max (inclusive), can be a decimal.
-- rationale must be 1-3 sentences, specific to the evidence provided.
-- Be honest and calibrated — a mediocre project should score 40-60%, excellent work 80%+.
-- Never fabricate evidence. If evidence is missing, score conservatively.`
+export interface CriteriaScores {
+  code_correctness: number;
+  time_complexity: number;
+  space_efficiency: number;
+  code_cleanliness: number;
+  architecture: number;
+  edge_cases: number;
+  test_suite: number;
+  security: number;
+  documentation: number;
+  ai_integrity: number;
+}
 
-// Exponential backoff for Groq rate limits
-async function withBackoff<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
+export interface EvaluationResult {
+  overall_score: number;
+  criteria_scores: CriteriaScores;
+  summary: string;
+  vulnerabilities: Vulnerability[];
+}
+
+const SYSTEM_PROMPT = `You are a Principal Code Auditor evaluating applicant submission code for a high-performance computer science club.
+Analyze the provided source code thoroughly across 10 specific evaluation criteria on a scale of 0 to 100:
+
+Criteria Keys (MUST use these exact keys):
+1. code_correctness: Logic accuracy, syntax correctness, functionality.
+2. time_complexity: Algorithm efficiency, Big-O scaling, runtime performance.
+3. space_efficiency: Memory usage, resource allocation, payload footprint.
+4. code_cleanliness: Naming conventions, readability, modularity, DRY principles.
+5. architecture: System design, separation of concerns, pattern usage.
+6. edge_cases: Handling null/empty inputs, boundary conditions, error handling.
+7. test_suite: Presence, quality, and coverage of unit/integration tests.
+8. security: Resistance to vulnerabilities (e.g. injection, data leaks, hardcoded credentials).
+9. documentation: Inline comments, README quality, clear specifications.
+10. ai_integrity: Code authenticity, absence of boilerplate AI artifacts or unverified copy-pasting.
+
+Output Requirements:
+You MUST output ONLY a valid raw JSON object (no markdown formatting, no extra explanation) with the following shape:
+{
+  "overall_score": <number 0-100>,
+  "criteria_scores": {
+    "code_correctness": <number 0-100>,
+    "time_complexity": <number 0-100>,
+    "space_efficiency": <number 0-100>,
+    "code_cleanliness": <number 0-100>,
+    "architecture": <number 0-100>,
+    "edge_cases": <number 0-100>,
+    "test_suite": <number 0-100>,
+    "security": <number 0-100>,
+    "documentation": <number 0-100>,
+    "ai_integrity": <number 0-100>
+  },
+  "summary": "<3-5 sentence detailed summary of strengths and areas for improvement>",
+  "vulnerabilities": [
+    {
+      "id": "vuln-1",
+      "title": "<short title>",
+      "severity": "<low|medium|high|critical>",
+      "line": <line number or 0>,
+      "analysis": "<detailed explanation of the vulnerability>",
+      "suggested_fix": "<recommended remediation>"
+    }
+  ]
+}`;
+
+// Helper for backoff on rate limits
+async function withBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await fn()
-    } catch (err: unknown) {
-      const e = err as { status?: number; message?: string }
-      const isRateLimit = e?.status === 429 || e?.message?.includes('rate limit')
-      if (!isRateLimit || attempt === maxRetries) throw err
-      const delay = Math.min(1000 * 2 ** attempt + Math.random() * 500, 30_000)
-      console.log(`  Rate limited — waiting ${(delay / 1000).toFixed(1)}s (attempt ${attempt + 1})`)
-      await new Promise((r) => setTimeout(r, delay))
+      return await fn();
+    } catch (err: any) {
+      const isRateLimit = err?.status === 429 || err?.message?.includes('rate limit');
+      if (!isRateLimit || attempt === maxRetries) throw err;
+      const delay = Math.min(1000 * 2 ** attempt + Math.random() * 500, 10000);
+      console.log(`[Groq API Rate Limit] Retrying in ${(delay / 1000).toFixed(1)}s (Attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw new Error('Max retries exceeded')
+  throw new Error('Max retries exceeded for Groq API call.');
 }
 
-export async function gradeSubmission(opts: {
-  repoTree: string
-  keyFiles: Record<string, string>
-  commits: string
-  gitleaksFindings: string
-  answers: Record<string, string>
-  demoUrl?: string | null
-}): Promise<GradeResult[]> {
-  const { repoTree, keyFiles, commits, gitleaksFindings, answers, demoUrl } = opts
+/**
+ * Evaluates raw source code text against 10 criteria using Groq (Meta Llama 3).
+ *
+ * @param rawCodeText Flattened source code string
+ * @param language Programming language of the submission
+ * @returns EvaluationResult object with overall score, criteria breakdown, summary, and vulnerabilities
+ */
+export async function evaluateCodeWithGroq(
+  rawCodeText: string,
+  language: string
+): Promise<EvaluationResult> {
+  if (!rawCodeText || !rawCodeText.trim()) {
+    return {
+      overall_score: 0,
+      criteria_scores: {
+        code_correctness: 0,
+        time_complexity: 0,
+        space_efficiency: 0,
+        code_cleanliness: 0,
+        architecture: 0,
+        edge_cases: 0,
+        test_suite: 0,
+        security: 0,
+        documentation: 0,
+        ai_integrity: 0,
+      },
+      summary: 'No code submitted for evaluation.',
+      vulnerabilities: [],
+    };
+  }
 
-  // Build file context
-  const fileContext = Object.entries(keyFiles)
-    .map(([p, c]) => `\n--- ${p} ---\n${c}`)
-    .join('\n')
+  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
-  // Build answers context
-  const answersText = Object.entries(answers)
-    .map(([k, v]) => `[${k}]: ${v}`)
-    .join('\n\n')
-
-  const leaks = JSON.parse(gitleaksFindings || '[]')
-  const leakSummary = leaks.length === 0
-    ? 'No secrets found by gitleaks.'
-    : `gitleaks found ${leaks.length} potential secret(s): ${JSON.stringify(leaks.slice(0, 5))}`
-
-  const userContent = `
-## Repository file tree (up to 300 files)
-${repoTree}
-
-## Key file contents
-${fileContext}
-
-## Commit history (last 50 commits)
-${commits}
-
-## Secret scan
-${leakSummary}
-
-## Demo URL
-${demoUrl ?? 'Not provided'}
-
-## Student written answers
-${answersText}
-
-## Rubric (grade ALL of these criteria)
-${RUBRIC.map((c) => `- ${c.name} (max ${c.max}): ${c.description}`).join('\n')}
-
-Return a JSON array: [{criterion, score, max, rationale}, ...]
-`.trim()
+  const userContent = `Language: ${language}\n\nSource Code to Audit:\n${rawCodeText.slice(0, 50000)}`;
 
   const response = await withBackoff(() =>
     groq.chat.completions.create({
-      model: process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile',
+      model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userContent },
@@ -96,35 +139,57 @@ Return a JSON array: [{criterion, score, max, rationale}, ...]
       temperature: 0.2,
       max_tokens: 4096,
     })
-  )
+  );
 
-  const raw = response.choices[0]?.message?.content ?? '{}'
-  let parsed: unknown
+  const rawText = response.choices[0]?.message?.content || '{}';
 
+  // Markdown-stripping fallback parsing logic
+  let parsed: any;
   try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error(`Groq returned invalid JSON: ${raw.slice(0, 200)}`)
+    let cleanText = rawText.trim();
+    if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+    parsed = JSON.parse(cleanText);
+  } catch (parseErr) {
+    console.error('[Groq Response Parse Error] Failed to parse JSON response:', rawText.slice(0, 300));
+    throw new Error('Groq API returned malformed or non-JSON output.');
   }
 
-  // Accept either {grades:[...]} or [...] directly
-  const arr: unknown = Array.isArray(parsed)
-    ? parsed
-    : (parsed as Record<string, unknown>).grades ?? Object.values(parsed as Record<string, unknown>)[0]
+  // Ensure default fallback values for safety
+  const defaultCriteria: CriteriaScores = {
+    code_correctness: 70,
+    time_complexity: 70,
+    space_efficiency: 70,
+    code_cleanliness: 70,
+    architecture: 70,
+    edge_cases: 70,
+    test_suite: 70,
+    security: 70,
+    documentation: 70,
+    ai_integrity: 70,
+  };
 
-  if (!Array.isArray(arr)) throw new Error('Unexpected Groq response shape')
+  const criteriaScores: CriteriaScores = {
+    ...defaultCriteria,
+    ...(parsed.criteria_scores || {}),
+  };
 
-  // Validate and coerce each item against the rubric
-  const rubricMap = new Map(RUBRIC.map((c) => [c.name, c]))
-  return (arr as Record<string, unknown>[]).map((item) => {
-    const crit = rubricMap.get(item.criterion as string)
-    const max = crit?.max ?? (item.max as number) ?? 10
-    const score = Math.max(0, Math.min(max, Number(item.score) || 0))
-    return {
-      criterion: String(item.criterion),
-      score,
-      max,
-      rationale: String(item.rationale ?? ''),
-    }
-  })
+  const calculatedAvg =
+    Object.values(criteriaScores).reduce((a, b) => a + Number(b || 0), 0) /
+    Object.keys(criteriaScores).length;
+
+  const overallScore = typeof parsed.overall_score === 'number'
+    ? parsed.overall_score
+    : Math.round(calculatedAvg * 10) / 10;
+
+  return {
+    overall_score: Number(overallScore),
+    criteria_scores: criteriaScores,
+    summary: String(parsed.summary || 'Evaluation completed successfully.'),
+    vulnerabilities: Array.isArray(parsed.vulnerabilities) ? parsed.vulnerabilities : [],
+  };
 }
+
+// Backward compatibility alias for legacy scripts
+export const gradeSubmission = evaluateCodeWithGroq;

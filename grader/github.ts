@@ -1,103 +1,272 @@
-import { execSync } from 'child_process'
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
+import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
-const GITHUB_PAT = process.env.GITHUB_PAT!
-const HEADERS = {
-  Authorization: `token ${GITHUB_PAT}`,
-  Accept: 'application/vnd.github.v3+json',
-  'User-Agent': 'ai-grader/1.0',
+const GITHUB_TOKEN = process.env.GITHUB_PAT || process.env.GITHUB_TOKEN;
+
+function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'ai-grading-system/1.0',
+  };
+  if (GITHUB_TOKEN) {
+    headers.Authorization = `token ${GITHUB_TOKEN}`;
+  }
+  return headers;
 }
 
-function repoOwnerName(repoUrl: string): { owner: string; name: string } {
-  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/)
-  if (!match) throw new Error(`Cannot parse repo URL: ${repoUrl}`)
-  return { owner: match[1], name: match[2] }
+/**
+ * Extracts owner and repository name from a GitHub URL.
+ */
+export function parseGitHubUrl(githubUrl: string): { owner: string; repo: string } {
+  if (!githubUrl || typeof githubUrl !== 'string') {
+    throw new Error('Invalid GitHub URL: URL string is required.');
+  }
+
+  const cleanedUrl = githubUrl.trim().replace(/\/$/, '').replace(/\.git$/, '');
+  const match = cleanedUrl.match(/github\.com\/([^/]+)\/([^/]+)$/i);
+
+  if (!match) {
+    throw new Error(`Invalid GitHub repository URL format: "${githubUrl}". Expected format: https://github.com/owner/repo`);
+  }
+
+  return { owner: match[1], repo: match[2] };
 }
 
-async function ghFetch(path: string): Promise<unknown> {
-  const res = await fetch(`https://api.github.com${path}`, { headers: HEADERS })
-  if (!res.ok) throw new Error(`GitHub API ${res.status}: ${path}`)
-  return res.json()
+interface TreeItem {
+  path: string;
+  type: string;
+  size?: number;
+  sha: string;
+  url: string;
 }
 
-interface TreeItem { path: string; type: string; size?: number; sha: string; url: string }
-interface Commit { sha: string; commit: { message: string; author: { date: string } } }
+// Directory blacklists to strictly ignore
+const IGNORED_DIRECTORIES = [
+  'node_modules',
+  'dist',
+  '.git',
+  '.next',
+  'build',
+  'out',
+  'coverage',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.idea',
+  '.vscode',
+];
+
+// File extension blacklists for images, binaries, fonts, media, and compiled artifacts
+const IGNORED_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.bmp', '.tiff',
+  '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
+  '.exe', '.dll', '.so', '.dylib', '.bin',
+  '.ttf', '.woff', '.woff2', '.eot', '.otf',
+  '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+  '.pyc', '.pyo', '.class', '.o', '.obj',
+  '.db', '.sqlite', '.sqlite3',
+  '.ds_store'
+]);
+
+// Exact lock files or OS files to ignore
+const IGNORED_EXACT_FILES = new Set([
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'bun.lockb',
+  'cargo.lock',
+  'poetry.lock',
+  'gemfile.lock',
+  '.ds_store',
+  'thumbs.db'
+]);
+
+/**
+ * Determines whether a file path should be excluded based on directory, extension, or exact filename.
+ */
+function shouldIgnoreFile(filePath: string): boolean {
+  const parts = filePath.split('/');
+
+  // Check directory blacklist
+  if (parts.some((part) => IGNORED_DIRECTORIES.includes(part.toLowerCase()))) {
+    return true;
+  }
+
+  const fileName = parts[parts.length - 1].toLowerCase();
+
+  // Check exact filename blacklist
+  if (IGNORED_EXACT_FILES.has(fileName)) {
+    return true;
+  }
+
+  // Check extension blacklist
+  const ext = path.extname(fileName).toLowerCase();
+  if (IGNORED_EXTENSIONS.has(ext)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Fetches, filters, and flattens a GitHub repository's source code into a formatted single string for LLM processing.
+ *
+ * @param githubUrl Public GitHub repository URL (e.g. https://github.com/owner/repo)
+ * @returns Formatted code string with clear file demarcations
+ */
+export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
+  try {
+    const { owner, repo } = parseGitHubUrl(githubUrl);
+    const headers = getHeaders();
+
+    // 1. Fetch Repository Info to obtain default branch
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+
+    if (!repoRes.ok) {
+      if (repoRes.status === 404) {
+        throw new Error(`Repository not found or private: ${owner}/${repo}`);
+      }
+      if (repoRes.status === 403 || repoRes.status === 429) {
+        const rateLimitReset = repoRes.headers.get('x-ratelimit-reset');
+        const resetTime = rateLimitReset ? new Date(parseInt(rateLimitReset, 10) * 1000).toLocaleTimeString() : 'later';
+        throw new Error(`GitHub API rate limit exceeded. Please try again at ${resetTime} or configure GITHUB_PAT.`);
+      }
+      throw new Error(`GitHub API error (${repoRes.status}): Unable to fetch metadata for ${owner}/${repo}`);
+    }
+
+    const repoData = (await repoRes.json()) as { default_branch: string };
+    const defaultBranch = repoData.default_branch || 'main';
+
+    // 2. Fetch recursive git tree
+    const treeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`,
+      { headers }
+    );
+
+    if (!treeRes.ok) {
+      throw new Error(`GitHub API error (${treeRes.status}): Failed to fetch file tree for ${owner}/${repo}`);
+    }
+
+    const treeData = (await treeRes.json()) as { tree?: TreeItem[]; truncated?: boolean };
+
+    if (!treeData.tree || !Array.isArray(treeData.tree)) {
+      throw new Error(`Invalid repository tree structure received for ${owner}/${repo}`);
+    }
+
+    // 3. Filter tree for code files
+    const codeFiles = treeData.tree.filter(
+      (item) => item.type === 'blob' && !shouldIgnoreFile(item.path)
+    );
+
+    if (codeFiles.length === 0) {
+      return `// --- Repository: ${owner}/${repo} ---\n// No matching code files found.`;
+    }
+
+    // 4. Fetch raw contents and flatten into single LLM prompt string
+    const flattenedChunks: string[] = [];
+
+    for (const file of codeFiles) {
+      try {
+        const rawRes = await fetch(
+          `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${file.path}`,
+          { headers: GITHUB_TOKEN ? { Authorization: `token ${GITHUB_TOKEN}` } : {} }
+        );
+
+        if (rawRes.ok) {
+          const fileContent = await rawRes.text();
+          flattenedChunks.push(`// --- File: ${file.path} ---\n${fileContent.trim()}\n`);
+        }
+      } catch (fileErr) {
+        console.warn(`[GitHub Scraper] Could not fetch raw content for ${file.path}:`, fileErr);
+      }
+    }
+
+    return flattenedChunks.join('\n');
+  } catch (error: any) {
+    console.error(`[GitHub Scraper Error] Failed to parse repository "${githubUrl}":`, error.message);
+    throw error;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Legacy & Scanner Helpers (Retained for existing workflows)
+// -----------------------------------------------------------------------------
 
 export async function fetchRepoContext(repoUrl: string): Promise<{
-  tree: string
-  keyFiles: Record<string, string>
-  commits: string
+  tree: string;
+  keyFiles: Record<string, string>;
+  commits: string;
 }> {
-  const { owner, name } = repoOwnerName(repoUrl)
+  const { owner, repo: name } = parseGitHubUrl(repoUrl);
+  const headers = getHeaders();
 
-  // Get default branch
-  const repo = await ghFetch(`/repos/${owner}/${name}`) as { default_branch: string }
-  const branch = repo.default_branch
+  const repoRes = await fetch(`https://api.github.com/repos/${owner}/${name}`, { headers });
+  if (!repoRes.ok) throw new Error(`GitHub API ${repoRes.status}: /repos/${owner}/${name}`);
+  const repo = (await repoRes.json()) as { default_branch: string };
+  const branch = repo.default_branch;
 
-  // File tree (recursive)
-  const treeData = await ghFetch(`/repos/${owner}/${name}/git/trees/${branch}?recursive=1`) as { tree: TreeItem[] }
-  const allFiles = treeData.tree.filter((f) => f.type === 'blob')
+  const treeRes = await fetch(
+    `https://api.github.com/repos/${owner}/${name}/git/trees/${branch}?recursive=1`,
+    { headers }
+  );
+  if (!treeRes.ok) throw new Error(`GitHub API ${treeRes.status}: git tree`);
+  const treeData = (await treeRes.json()) as { tree: TreeItem[] };
+  const allFiles = treeData.tree.filter((f) => f.type === 'blob');
 
-  // Summarise tree (paths only, truncated to avoid huge context)
-  const treeText = allFiles.map((f) => `${f.path} (${f.size ?? 0}B)`).slice(0, 300).join('\n')
+  const treeText = allFiles.map((f) => `${f.path} (${f.size ?? 0}B)`).slice(0, 300).join('\n');
 
-  // Select key files to include in full
-  const priority = ['README.md', 'package.json', 'requirements.txt', 'pyproject.toml', '.env.example']
+  const priority = ['README.md', 'package.json', 'requirements.txt', 'pyproject.toml', '.env.example'];
   const interesting = allFiles
-    .filter((f) =>
-      priority.includes(path.basename(f.path)) ||
-      ['.ts', '.tsx', '.js', '.jsx', '.py', '.go'].some((ext) => f.path.endsWith(ext))
+    .filter(
+      (f) =>
+        priority.includes(path.basename(f.path)) ||
+        ['.ts', '.tsx', '.js', '.jsx', '.py', '.go'].some((ext) => f.path.endsWith(ext))
     )
     .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
-    .slice(0, 12) // cap at 12 files
+    .slice(0, 12);
 
-  const keyFiles: Record<string, string> = {}
+  const keyFiles: Record<string, string> = {};
   for (const file of interesting) {
     const raw = await fetch(
       `https://raw.githubusercontent.com/${owner}/${name}/${branch}/${file.path}`,
-      { headers: { Authorization: `token ${GITHUB_PAT}` } }
-    )
+      { headers: GITHUB_TOKEN ? { Authorization: `token ${GITHUB_TOKEN}` } : {} }
+    );
     if (raw.ok) {
-      const text = await raw.text()
-      keyFiles[file.path] = text.slice(0, 3000) // cap per-file
+      const text = await raw.text();
+      keyFiles[file.path] = text.slice(0, 3000);
     }
   }
 
-  // Commit history
-  const commitsData = await ghFetch(`/repos/${owner}/${name}/commits?per_page=50`) as Commit[]
+  const commitsRes = await fetch(`https://api.github.com/repos/${owner}/${name}/commits?per_page=50`, { headers });
+  const commitsData = commitsRes.ok ? ((await commitsRes.json()) as any[]) : [];
   const commits = commitsData
     .map((c) => `${c.commit.author.date.slice(0, 10)} ${c.commit.message.split('\n')[0]}`)
-    .join('\n')
+    .join('\n');
 
-  return { tree: treeText, keyFiles, commits }
+  return { tree: treeText, keyFiles, commits };
 }
 
-// Run gitleaks on a shallow clone of the repo, return findings as JSON string
 export async function runGitleaks(repoUrl: string): Promise<string> {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'grader-'))
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'grader-'));
   try {
-    execSync(
-      `git clone --depth=1 --quiet "${repoUrl}" "${tmpDir}/repo"`,
-      { stdio: 'pipe', timeout: 60_000 }
-    )
-    const reportPath = path.join(tmpDir, 'gitleaks.json')
+    execSync(`git clone --depth=1 --quiet "${repoUrl}" "${tmpDir}/repo"`, { stdio: 'pipe', timeout: 60_000 });
+    const reportPath = path.join(tmpDir, 'gitleaks.json');
     try {
       execSync(
         `gitleaks detect --source="${tmpDir}/repo" --report-format=json --report-path="${reportPath}" --no-git`,
         { stdio: 'pipe', timeout: 30_000 }
-      )
-      return '[]' // exit 0 = no leaks
+      );
+      return '[]';
     } catch {
-      // gitleaks exits 1 when leaks are found — that's expected
-      if (fs.existsSync(reportPath)) return fs.readFileSync(reportPath, 'utf8')
-      return '[]'
+      if (fs.existsSync(reportPath)) return fs.readFileSync(reportPath, 'utf8');
+      return '[]';
     }
   } catch (err) {
-    console.warn('gitleaks scan failed (is gitleaks installed?):', (err as Error).message)
-    return '[]'
+    console.warn('gitleaks scan failed (is gitleaks installed?):', (err as Error).message);
+    return '[]';
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true })
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
