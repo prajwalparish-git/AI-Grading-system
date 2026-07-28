@@ -1,82 +1,154 @@
-import { redirect } from 'next/navigation'
+import React from 'react'
 import Link from 'next/link'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { SystemLoadMonitor } from '@/components/admin/SystemLoadMonitor'
+import { GlobalLeaderboard } from '@/components/admin/GlobalLeaderboard'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { fetchDashboardStats } from '@/lib/api/leaderboard'
+import { 
+  Users, 
+  FileCode2, 
+  CheckCheck, 
+  ShieldAlert, 
+  Terminal, 
+  ExternalLink,
+  Cpu,
+  Layers,
+  ArrowUpRight,
+  Loader2,
+} from 'lucide-react'
 
-export default async function AdminDashboard() {
-  const supabase = await createServerSupabaseClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+export const metadata = {
+  title: 'Admin Dashboard // AI Grading System',
+  description: 'System Load Telemetry and Global Leaderboard across 10 evaluation criteria.',
+}
 
-  const [
-    { count: totalStudents },
-    { count: totalSubmissions },
-    { count: graded },
-    { count: flagged },
-  ] = await Promise.all([
-    supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
-    supabase.from('submissions').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
-    supabase.from('submissions').select('*', { count: 'exact', head: true }).eq('status', 'graded'),
-    supabase.from('integrity_events').select('user_id', { count: 'exact', head: true }),
-  ])
+export default function AdminDashboardPage() {
+  const dashStats = fetchDashboardStats()
 
   const stats = [
-    { label: 'Students registered', value: totalStudents ?? 0 },
-    { label: 'Awaiting grading', value: totalSubmissions ?? 0 },
-    { label: 'Graded', value: graded ?? 0 },
-    { label: 'Integrity events', value: flagged ?? 0 },
+    { 
+      label: 'Registered Candidates', 
+      value: String(dashStats.totalCandidates), 
+      change: `${dashStats.totalInQueue} in queue`,
+      icon: Users,
+      color: 'text-blue-400',
+      bg: 'bg-blue-500/10 border-blue-500/20'
+    },
+    { 
+      label: 'Evaluations Graded', 
+      value: String(dashStats.totalGraded), 
+      change: '100% automated',
+      icon: FileCode2,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10 border-emerald-500/20'
+    },
+    { 
+      label: 'Average Score', 
+      value: `${dashStats.avgScore}%`, 
+      change: `Top tier ${dashStats.topScore}%`,
+      icon: CheckCheck,
+      color: 'text-purple-400',
+      bg: 'bg-purple-500/10 border-purple-500/20'
+    },
+    { 
+      label: 'Integrity Audit Flags', 
+      value: String(dashStats.totalFlagged), 
+      change: 'Critical + High vulns',
+      icon: ShieldAlert,
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10 border-amber-500/20'
+    },
   ]
 
   return (
-    <main className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Admin Dashboard</h1>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {stats.map((s) => (
-            <div key={s.label} className="bg-white border border-gray-200 rounded-2xl p-5">
-              <p className="text-3xl font-bold text-indigo-600">{s.value}</p>
-              <p className="text-xs text-gray-500 mt-1">{s.label}</p>
-            </div>
-          ))}
+    <div className="space-y-8 pb-12">
+      
+      {/* Admin Dashboard Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
+        <div>
+          <div className="flex items-center space-x-2">
+            <h1 className="text-2xl font-extrabold text-white tracking-tight font-mono">
+              Admin Evaluation Control Center
+            </h1>
+            <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400 bg-blue-500/10 font-mono">
+              Live Telemetry
+            </Badge>
+          </div>
+          <p className="text-xs text-slate-400 font-mono mt-1">
+            Real-time inference queue telemetry, worker load monitoring, and applicant ranking.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex items-center space-x-3">
           <Link
             href="/admin/submissions"
-            className="bg-white border border-gray-200 rounded-2xl p-6 hover:border-indigo-300 transition-colors"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-lg shadow-blue-600/20 transition-all"
           >
-            <h2 className="font-semibold text-gray-800 mb-1">Submissions</h2>
-            <p className="text-sm text-gray-500">Browse all submitted projects and statuses.</p>
+            <span>Submissions Queue</span>
+            <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
-
-          <Link
-            href="/admin/grades"
-            className="bg-white border border-gray-200 rounded-2xl p-6 hover:border-indigo-300 transition-colors"
-          >
-            <h2 className="font-semibold text-gray-800 mb-1">Grades</h2>
-            <p className="text-sm text-gray-500">View all graded submissions with full breakdown.</p>
-          </Link>
-
           <Link
             href="/admin/integrity"
-            className="bg-white border border-gray-200 rounded-2xl p-6 hover:border-indigo-300 transition-colors"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 transition-all"
           >
-            <h2 className="font-semibold text-gray-800 mb-1">Integrity flags</h2>
-            <p className="text-sm text-gray-500">Review paste/blur events per applicant.</p>
+            <span>Integrity Audit</span>
+            <ExternalLink className="h-3.5 w-3.5" />
           </Link>
         </div>
-
-        <div className="mt-8 bg-amber-50 border border-amber-200 rounded-2xl p-6">
-          <h2 className="font-semibold text-amber-800 mb-2">Running the AI grader</h2>
-          <p className="text-sm text-amber-700 mb-3">
-            Grading runs locally on your machine — it is never triggered from this UI.
-          </p>
-          <pre className="bg-amber-100 text-amber-900 text-xs rounded-lg px-4 py-3 overflow-x-auto">
-{`# In the project directory on your machine:
-npm run grade`}
-          </pre>
-        </div>
       </div>
-    </main>
+
+      {/* Top Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((s) => {
+          const Icon = s.icon
+          return (
+            <Card key={s.label} className="border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-mono text-slate-400">{s.label}</p>
+                  <p className="text-2xl font-bold text-white font-mono mt-0.5">{s.value}</p>
+                  <p className="text-[10px] font-mono text-slate-500 mt-1">{s.change}</p>
+                </div>
+                <div className={`p-2.5 rounded-lg border ${s.bg}`}>
+                  <Icon className={`h-5 w-5 ${s.color}`} />
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+
+      {/* System Load Monitor Section */}
+      <section>
+        <SystemLoadMonitor />
+      </section>
+
+      {/* Global Leaderboard Section */}
+      <section>
+        <GlobalLeaderboard />
+      </section>
+
+      {/* Grader CLI Runner Card */}
+      <Card className="border-amber-500/30 bg-amber-500/5 backdrop-blur-xl">
+        <CardContent className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-amber-300 font-mono flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-amber-400" />
+              CLI Evaluation Pipeline Instructions
+            </h3>
+            <p className="text-xs text-slate-400">
+              Evaluation jobs run securely in isolated worker processes. Trigger single or batch grading jobs via terminal:
+            </p>
+          </div>
+          <div className="w-full md:w-auto">
+            <pre className="bg-slate-950 border border-slate-800 text-amber-400 font-mono text-xs rounded-md px-4 py-2 overflow-x-auto shadow-inner">
+              <code>npm run grade</code>
+            </pre>
+          </div>
+        </CardContent>
+      </Card>
+
+    </div>
   )
 }

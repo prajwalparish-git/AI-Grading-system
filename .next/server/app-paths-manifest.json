@@ -1,0 +1,18 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/grades/[id]/page": "app/admin/grades/[id]/page.js",
+  "/admin/grades/page": "app/admin/grades/page.js",
+  "/admin/integrity/page": "app/admin/integrity/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/submissions/[id]/page": "app/admin/submissions/[id]/page.js",
+  "/admin/submissions/page": "app/admin/submissions/page.js",
+  "/api/integrity/route": "app/api/integrity/route.js",
+  "/api/results/route": "app/api/results/route.js",
+  "/api/submit/route": "app/api/submit/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/results/page": "app/results/page.js",
+  "/submit/page": "app/submit/page.js"
+}

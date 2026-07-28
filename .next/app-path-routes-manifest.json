@@ -1,0 +1,18 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/admin/grades/[id]/page": "/admin/grades/[id]",
+  "/admin/grades/page": "/admin/grades",
+  "/admin/integrity/page": "/admin/integrity",
+  "/admin/page": "/admin",
+  "/admin/submissions/[id]/page": "/admin/submissions/[id]",
+  "/admin/submissions/page": "/admin/submissions",
+  "/api/integrity/route": "/api/integrity",
+  "/api/results/route": "/api/results",
+  "/api/submit/route": "/api/submit",
+  "/favicon.ico/route": "/favicon.ico",
+  "/login/page": "/login",
+  "/page": "/",
+  "/results/page": "/results",
+  "/submit/page": "/submit"
+}
