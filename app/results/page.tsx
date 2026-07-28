@@ -1,0 +1,94 @@
+import { redirect } from 'next/navigation'
+import { createServerSupabaseClient } from '@/lib/supabase'
+
+const HIDDEN_CRITERIA = new Set([
+  'Prompt Engineering',
+  'Token-Context Efficiency',
+  'API Security',
+  'Integrity & Honesty',
+])
+
+export default async function ResultsPage() {
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: submission } = await supabase
+    .from('submissions')
+    .select('id, status, repo_url, demo_url, submitted_at')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!submission) redirect('/submit')
+  if (submission.status !== 'graded') redirect('/submit')
+
+  const { data: grades } = await supabase
+    .from('grades')
+    .select('criterion, score, max, rationale')
+    .eq('submission_id', submission.id)
+    .order('criterion')
+
+  const visible = (grades ?? []).filter((g) => !HIDDEN_CRITERIA.has(g.criterion))
+  const totalScore = visible.reduce((sum, g) => sum + g.score, 0)
+  const totalMax = visible.reduce((sum, g) => sum + g.max, 0)
+  const pct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0
+
+  return (
+    <main className="min-h-screen bg-gray-50 py-10 px-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">Your Results</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Submission graded · Repo:{' '}
+            <a href={submission.repo_url} className="text-indigo-600 underline" target="_blank" rel="noopener noreferrer">
+              {submission.repo_url}
+            </a>
+          </p>
+        </div>
+
+        {/* Score summary */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 mb-6 flex items-center gap-6">
+          <div className="text-5xl font-bold text-indigo-600">{pct}%</div>
+          <div>
+            <p className="text-lg font-semibold text-gray-800">{totalScore.toFixed(1)} / {totalMax} points</p>
+            <p className="text-sm text-gray-400">Across {visible.length} criteria</p>
+          </div>
+        </div>
+
+        {/* Per-criterion breakdown */}
+        <div className="bg-white border border-gray-200 rounded-2xl divide-y divide-gray-100">
+          {visible.map((grade) => {
+            const critPct = grade.max > 0 ? Math.round((grade.score / grade.max) * 100) : 0
+            return (
+              <div key={grade.criterion} className="p-5">
+                <div className="flex items-start justify-between gap-4 mb-2">
+                  <h3 className="font-medium text-gray-800 text-sm">{grade.criterion}</h3>
+                  <span className="text-sm font-semibold text-gray-700 shrink-0">
+                    {grade.score} / {grade.max}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="h-1.5 bg-gray-100 rounded-full mb-3">
+                  <div
+                    className="h-1.5 rounded-full bg-indigo-500"
+                    style={{ width: `${critPct}%` }}
+                  />
+                </div>
+
+                {grade.rationale && (
+                  <p className="text-xs text-gray-500 leading-relaxed">{grade.rationale}</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <p className="text-xs text-center text-gray-400 mt-6">
+          Results are final. Contact the admissions team for queries.
+        </p>
+      </div>
+    </main>
+  )
+}
