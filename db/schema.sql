@@ -4,11 +4,11 @@
 --
 -- SECURITY & SERVICE ROLE ARCHITECTURE:
 -- 1. Row Level Security (RLS) is enabled on all tables.
--- 2. Authenticated users interact via anon/session clients and can ONLY read/insert/update
---    their own records (where user_id = auth.uid() or linked via submission/applicant ownership).
+-- 2. Authenticated users interact via anon/session clients and can ONLY read their own records
+--    and create initial applicant/submission/integrity_event records.
 -- 3. Administrative operations check user role strictly via auth.jwt() -> 'app_metadata' ->> 'role' = 'admin'.
--- 4. Background workers (e.g. grader script) and privileged administrative operations use the
---    Supabase Service Role Client (createAdminClient), which bypasses RLS safely on the server.
+-- 4. Evaluations and applicant status updates are service-role ONLY. Background workers (e.g. grader script)
+--    and server route handlers use the Supabase Service Role Client (createAdminClient), which bypasses RLS safely.
 
 -- Enum for Applicant Status
 do $$ begin
@@ -98,10 +98,8 @@ create policy "Users can insert own applicant"
     on public.applicants for insert
     with check (user_id = auth.uid());
 
-create policy "Users can update own applicant"
-    on public.applicants for update
-    using (user_id = auth.uid())
-    with check (user_id = auth.uid());
+-- Note: No UPDATE policy for authenticated users on applicants. Status transitions
+-- ('pending' -> 'grading' -> 'completed' / 'error') and field updates are service-role only.
 
 -- Submissions RLS
 create policy "Users can view own submissions"
@@ -139,15 +137,8 @@ create policy "Admins can view all evaluations"
     on public.evaluations for select
     using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
-create policy "Users can insert own evaluations"
-    on public.evaluations for insert
-    with check (
-        submission_id in (
-            select s.id from public.submissions s
-            join public.applicants a on a.id = s.applicant_id
-            where a.user_id = auth.uid()
-        )
-    );
+-- Note: No INSERT policy for authenticated users on evaluations. Evaluations are written
+-- strictly by the background grader service role (createAdminClient).
 
 -- Integrity Events RLS
 create policy "Users can insert own integrity events"
@@ -157,4 +148,5 @@ create policy "Users can insert own integrity events"
 create policy "Admins can view all integrity events"
     on public.integrity_events for select
     using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
 

@@ -41,6 +41,25 @@ A comprehensive security audit and hardening effort was executed across the AI G
 
 ---
 
+## Round 2 Security Hardening
+
+### 8. Login API Middleware Authorization Whitelist
+- **Vulnerability**: `/api/auth/login` was blocked for unauthenticated users because `/api/*` routes mandated session authentication in `middleware.ts`.
+- **Remediation**: Whitelisted `/api/auth/login` as a public API path in `middleware.ts` so unauthenticated users can access server login and IP-based rate limiting.
+
+### 9. Service-Role Only Evaluations & Applicant Status Lock (RLS)
+- **Vulnerability**: Authenticated users could INSERT evaluation rows (grade forgery) or UPDATE applicant status/repo URLs via RLS.
+- **Remediation**: Dropped authenticated INSERT policy on `evaluations` and UPDATE policy on `applicants` in `db/schema.sql`. Evaluation writes and applicant status transitions are service-role only (`createAdminClient`). Switched submit route failure recovery status updates to `createAdminClient()`.
+
+### 10. Admin Mock Data Gating & Submission Detail API Route
+- **Vulnerability**: Empty Supabase responses or DB query errors triggered mock data fallbacks in production. Client submission detail relied solely on mock data.
+- **Remediation**: Gated server layer mock generators behind `ALLOW_MOCK_ADMIN_DATA === 'true'` or `NODE_ENV === 'development'`. Created authenticated `GET /api/admin/submissions/[id]` Route Handler and updated client data access layer (`lib/api/leaderboard.ts`).
+
+> [!IMPORTANT]
+> **Operator Action Required**: Operators MUST re-run `db/schema.sql` in the Supabase SQL Editor to enforce the updated RLS policies in live environments.
+
+---
+
 ## Verification & Build Status
 
 - **Type Check**: Verified cleanly with `npx tsc --noEmit`.

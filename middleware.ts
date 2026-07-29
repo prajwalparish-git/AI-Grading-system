@@ -5,16 +5,16 @@ import { NextResponse, type NextRequest } from 'next/server'
  * Route protection middleware.
  *
  * Public routes (no auth required):
- *   /login, /submit (page only), /results, /results/*
+ *   /login, /api/auth/login, /submit (page only), /results, /results/*
  *
  * Protected routes:
- *   /api/*       — require a valid authenticated session (no blanket open)
+ *   /api/*       — require a valid authenticated session (except whitelisted /api/auth/login)
  *   /admin/*     — require authenticated session AND admin role
  *   All other routes — require a valid authenticated session
  */
 
 // Routes that are fully public (no session required)
-const PUBLIC_PATHS = ['/login']
+const PUBLIC_PATHS = ['/login', '/api/auth/login']
 
 // Pages that are public but not API routes
 const PUBLIC_PAGE_PATHS = ['/submit', '/results']

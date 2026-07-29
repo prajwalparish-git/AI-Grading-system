@@ -18,6 +18,14 @@ import { generateLeaderboardEntries, generateSubmissionDetail } from './mock-gen
 import { createAdminClient } from '@/lib/supabase/server';
 
 /**
+ * Helper to determine if mock data generation is explicitly permitted.
+ * Enabled only if ALLOW_MOCK_ADMIN_DATA is 'true' or in development mode.
+ */
+function isMockAllowed(): boolean {
+  return process.env.ALLOW_MOCK_ADMIN_DATA === 'true' || process.env.NODE_ENV === 'development';
+}
+
+/**
  * Converts Supabase relational query output to LeaderboardEntry array.
  * Excludes raw_code_text for performance and security.
  */
@@ -92,8 +100,24 @@ export async function fetchLeaderboardFromSupabase(filters: LeaderboardFilters):
       .order('created_at', { ascending: false });
 
     if (error || !applicants || applicants.length === 0) {
-      if (error) console.warn('[Supabase Leaderboard Warning]:', error.message);
-      return generateMockLeaderboardResult(filters);
+      if (error) {
+        console.warn('[Leaderboard Server Error] DB query returned error:', error.message);
+      } else {
+        console.warn('[Leaderboard Server Notice] No applicants found in database.');
+      }
+
+      if (isMockAllowed()) {
+        console.warn('[Leaderboard Server Warning] Falling back to mock generator (ALLOW_MOCK_ADMIN_DATA / dev mode).');
+        return generateMockLeaderboardResult(filters);
+      }
+
+      return {
+        data: [],
+        totalCount: 0,
+        page: filters.page,
+        pageSize: filters.pageSize,
+        totalPages: 0,
+      };
     }
 
     let entries = mapSupabaseToLeaderboardEntries(applicants);
@@ -153,8 +177,17 @@ export async function fetchLeaderboardFromSupabase(filters: LeaderboardFilters):
 
     return { data, totalCount, page, pageSize: filters.pageSize, totalPages };
   } catch (err) {
-    console.warn('[Supabase Leaderboard Fetch Exception] Falling back to mock generator:', err);
-    return generateMockLeaderboardResult(filters);
+    console.warn('[Leaderboard Server Exception]:', err);
+    if (isMockAllowed()) {
+      return generateMockLeaderboardResult(filters);
+    }
+    return {
+      data: [],
+      totalCount: 0,
+      page: filters.page,
+      pageSize: filters.pageSize,
+      totalPages: 0,
+    };
   }
 }
 
@@ -194,9 +227,18 @@ export async function fetchSubmissionByIdServer(id: string): Promise<SubmissionD
       .maybeSingle();
 
     if (error || !applicant) {
-      const mockEntries = generateLeaderboardEntries();
-      const mockEntry = mockEntries.find((e) => e.id === id);
-      if (mockEntry) return generateSubmissionDetail(mockEntry);
+      if (error) {
+        console.warn('[Submission Detail Server Error] Query error:', error.message);
+      } else {
+        console.warn(`[Submission Detail Server Notice] Applicant ID ${id} not found in DB.`);
+      }
+
+      if (isMockAllowed()) {
+        console.warn(`[Submission Detail Server Warning] Searching mock entries for ID ${id}.`);
+        const mockEntries = generateLeaderboardEntries();
+        const mockEntry = mockEntries.find((e) => e.id === id);
+        if (mockEntry) return generateSubmissionDetail(mockEntry);
+      }
       return null;
     }
 
@@ -237,10 +279,12 @@ export async function fetchSubmissionByIdServer(id: string): Promise<SubmissionD
       codeSnippet: submission?.raw_code_text || '// Source code snippet not ingested or truncated.',
     };
   } catch (err) {
-    console.warn('[Supabase Detail Fetch Exception] Falling back to mock generator:', err);
-    const mockEntries = generateLeaderboardEntries();
-    const mockEntry = mockEntries.find((e) => e.id === id);
-    if (mockEntry) return generateSubmissionDetail(mockEntry);
+    console.warn('[Submission Detail Server Exception]:', err);
+    if (isMockAllowed()) {
+      const mockEntries = generateLeaderboardEntries();
+      const mockEntry = mockEntries.find((e) => e.id === id);
+      if (mockEntry) return generateSubmissionDetail(mockEntry);
+    }
     return null;
   }
 }
@@ -252,11 +296,29 @@ export async function fetchDashboardStatsServer() {
   try {
     const supabase = createAdminClient();
 
-    const { data: applicants } = await supabase.from('applicants').select('status');
-    const { data: evaluations } = await supabase.from('evaluations').select('overall_score, vulnerabilities');
+    const { data: applicants, error: appErr } = await supabase.from('applicants').select('status');
+    const { data: evaluations, error: evalErr } = await supabase.from('evaluations').select('overall_score, vulnerabilities');
 
-    if (!applicants || applicants.length === 0 || !evaluations || evaluations.length === 0) {
-      return generateMockDashboardStats();
+    if (appErr || evalErr || !applicants || applicants.length === 0 || !evaluations || evaluations.length === 0) {
+      if (appErr || evalErr) {
+        console.warn('[Dashboard Stats Server Error] DB query error:', appErr?.message || evalErr?.message);
+      } else {
+        console.warn('[Dashboard Stats Server Notice] No applicants or evaluations found in DB.');
+      }
+
+      if (isMockAllowed()) {
+        console.warn('[Dashboard Stats Server Warning] Falling back to mock generator.');
+        return generateMockDashboardStats();
+      }
+
+      return {
+        totalCandidates: applicants?.length ?? 0,
+        totalGraded: applicants?.filter((a) => a.status === 'completed').length ?? 0,
+        totalInQueue: applicants?.filter((a) => a.status === 'pending' || a.status === 'grading').length ?? 0,
+        totalFlagged: 0,
+        avgScore: '0.0',
+        topScore: '0.0',
+      };
     }
 
     const totalCandidates = applicants.length;
@@ -290,8 +352,19 @@ export async function fetchDashboardStatsServer() {
       avgScore,
       topScore,
     };
-  } catch {
-    return generateMockDashboardStats();
+  } catch (err) {
+    console.warn('[Dashboard Stats Server Exception]:', err);
+    if (isMockAllowed()) {
+      return generateMockDashboardStats();
+    }
+    return {
+      totalCandidates: 0,
+      totalGraded: 0,
+      totalInQueue: 0,
+      totalFlagged: 0,
+      avgScore: '0.0',
+      topScore: '0.0',
+    };
   }
 }
 

@@ -41,12 +41,18 @@ export async function fetchLeaderboard(filters: LeaderboardFilters): Promise<Pag
 }
 
 /**
- * Client-safe fallback for submission detail.
+ * Client-safe submission detail fetch function.
+ * Fetches real submission data from /api/admin/submissions/[id] endpoint.
  */
 export async function fetchSubmissionById(id: string): Promise<SubmissionDetail | null> {
-  const mockEntries = generateLeaderboardEntries();
-  const mockEntry = mockEntries.find((e) => e.id === id);
-  if (mockEntry) return generateSubmissionDetail(mockEntry);
+  try {
+    const res = await fetch(`/api/admin/submissions/${encodeURIComponent(id)}`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[Client Submission Detail Fetch Warning]:', err);
+  }
   return null;
 }
 

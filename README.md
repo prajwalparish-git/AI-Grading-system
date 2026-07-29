@@ -78,6 +78,9 @@ Run the unified schema script in your Supabase SQL Editor:
 
 This creates canonical tables (`applicants`, `submissions`, `evaluations`, `integrity_events`) and applies RLS policies.
 
+> [!IMPORTANT]
+> **Schema Re-application**: If upgrading from a previous version, re-run `db/schema.sql` in the Supabase SQL Editor so live database policies match the latest security updates (service-role only evaluations and applicant status locking).
+
 ### 4. Admin Role Assignment
 
 To grant a user admin privileges, set `app_metadata.role = 'admin'` in Supabase:

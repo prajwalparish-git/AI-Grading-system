@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, createAdminClient } from '@/lib/supabase/server';
 import { submitRatelimit } from '@/lib/ratelimit';
 
 // ── Security Constants ──────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
 
     if (submissionError) {
       console.error('[Submit API Error] Failed to create submission record:', submissionError);
-      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
+      await createAdminClient().from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
       return NextResponse.json(
         { error: 'Failed to save submission.' },
         { status: 500 }
