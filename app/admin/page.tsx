@@ -4,7 +4,7 @@ import { SystemLoadMonitor } from '@/components/admin/SystemLoadMonitor'
 import { GlobalLeaderboard } from '@/components/admin/GlobalLeaderboard'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { fetchDashboardStats } from '@/lib/api/leaderboard'
+import { fetchDashboardStatsServer } from '@/lib/api/leaderboard-server'
 import { 
   Users, 
   FileCode2, 
@@ -23,8 +23,8 @@ export const metadata = {
   description: 'System Load Telemetry and Global Leaderboard across 10 evaluation criteria.',
 }
 
-export default function AdminDashboardPage() {
-  const dashStats = fetchDashboardStats()
+export default async function AdminDashboardPage() {
+  const dashStats = await fetchDashboardStatsServer()
 
   const stats = [
     { 

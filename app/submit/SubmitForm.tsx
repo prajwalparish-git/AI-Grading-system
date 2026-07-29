@@ -38,7 +38,8 @@ export default function SubmitForm() {
   const [error, setError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     applicantId: string;
-    evaluation: {
+    status: string;
+    evaluation?: {
       overall_score: number;
       summary: string;
       vulnerabilitiesCount: number;
@@ -70,22 +71,9 @@ export default function SubmitForm() {
     }
 
     setIsSubmitting(true);
-    setLoadingStep('Connecting to Supabase database...');
+    setLoadingStep('Connecting to server...');
 
     try {
-      // Step simulation for enhanced UX feedback during long AI grading cycle
-      const stepTimer1 = setTimeout(() => {
-        setLoadingStep('Fetching & parsing GitHub repository files...');
-      }, 2500);
-
-      const stepTimer2 = setTimeout(() => {
-        setLoadingStep('Auditing code with Groq AI (Meta Llama 3)...');
-      }, 7000);
-
-      const stepTimer3 = setTimeout(() => {
-        setLoadingStep('Evaluating 10 technical criteria & vulnerability scan...');
-      }, 14000);
-
       const response = await fetch('/api/submit', {
         method: 'POST',
         headers: {
@@ -99,10 +87,6 @@ export default function SubmitForm() {
         }),
       });
 
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
-      clearTimeout(stepTimer3);
-
       const data = await response.json();
 
       if (!response.ok || !data.success) {
@@ -111,13 +95,16 @@ export default function SubmitForm() {
 
       setSuccessResult({
         applicantId: data.applicantId,
-        evaluation: {
-          overall_score: data.evaluation?.overall_score ?? 0,
-          summary: data.evaluation?.summary ?? 'Evaluation completed successfully.',
-          vulnerabilitiesCount: Array.isArray(data.evaluation?.vulnerabilities)
-            ? data.evaluation.vulnerabilities.length
-            : 0,
-        },
+        status: data.status || 'pending',
+        evaluation: data.evaluation
+          ? {
+              overall_score: data.evaluation.overall_score ?? 0,
+              summary: data.evaluation.summary ?? 'Evaluation completed successfully.',
+              vulnerabilitiesCount: Array.isArray(data.evaluation.vulnerabilities)
+                ? data.evaluation.vulnerabilities.length
+                : 0,
+            }
+          : undefined,
       });
     } catch (err: any) {
       console.error('[Submit Form Error]:', err);
@@ -128,6 +115,8 @@ export default function SubmitForm() {
   };
 
   if (successResult) {
+    const isQueued = !successResult.evaluation;
+
     return (
       <Card className="border-emerald-500/30 bg-slate-900/90 text-slate-100 shadow-2xl backdrop-blur-sm">
         <CardHeader className="text-center pb-4">
@@ -135,7 +124,7 @@ export default function SubmitForm() {
             <CheckCircle2 className="h-8 w-8" />
           </div>
           <CardTitle className="text-2xl font-bold font-mono text-emerald-400">
-            Evaluation Complete!
+            {isQueued ? 'Submission Received!' : 'Evaluation Complete!'}
           </CardTitle>
           <CardDescription className="text-slate-400 font-mono text-xs">
             Applicant Record ID: <span className="text-slate-200">{successResult.applicantId}</span>
@@ -143,22 +132,38 @@ export default function SubmitForm() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono text-slate-400">Overall AI Score</span>
-              <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-mono text-sm px-3 py-1 font-bold">
-                {successResult.evaluation.overall_score} / 100
-              </Badge>
-            </div>
-            <div className="border-t border-slate-800/80 pt-3">
-              <p className="text-xs text-slate-300 leading-relaxed italic">
-                "{successResult.evaluation.summary}"
-              </p>
-            </div>
-            {successResult.evaluation.vulnerabilitiesCount > 0 && (
-              <div className="flex items-center space-x-2 text-xs font-mono text-amber-400 pt-1">
-                <AlertTriangle className="h-4 w-4" />
-                <span>{successResult.evaluation.vulnerabilitiesCount} vulnerability finding(s) detected.</span>
+            {isQueued ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-slate-400">Status</span>
+                  <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-400 font-mono text-xs px-3 py-1 font-bold">
+                    Queued for AI Grading
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Your repository has been recorded. Our AI grading pipeline will audit your code asynchronously across 10 evaluation criteria.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-slate-400">Overall AI Score</span>
+                  <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-mono text-sm px-3 py-1 font-bold">
+                    {successResult.evaluation?.overall_score} / 100
+                  </Badge>
+                </div>
+                <div className="border-t border-slate-800/80 pt-3">
+                  <p className="text-xs text-slate-300 leading-relaxed italic">
+                    "{successResult.evaluation?.summary}"
+                  </p>
+                </div>
+                {(successResult.evaluation?.vulnerabilitiesCount ?? 0) > 0 && (
+                  <div className="flex items-center space-x-2 text-xs font-mono text-amber-400 pt-1">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>{successResult.evaluation?.vulnerabilitiesCount} vulnerability finding(s) detected.</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </CardContent>

@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,20 +15,26 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const supabase = createClient()
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-    if (authError) {
-      setError('Invalid email or password.')
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        setError(data.error || 'Invalid email or password.')
+        setLoading(false)
+        return
+      }
+
+      router.push(data.role === 'admin' ? '/admin' : '/submit')
+    } catch {
+      setError('An error occurred during sign in. Please try again.')
       setLoading(false)
-      return
     }
-
-    // Redirect based on role from auth metadata — no separate users table
-    const { data: { user } } = await supabase.auth.getUser()
-    const role = user?.app_metadata?.role ?? user?.user_metadata?.role
-
-    router.push(role === 'admin' ? '/admin' : '/submit')
   }
 
   return (

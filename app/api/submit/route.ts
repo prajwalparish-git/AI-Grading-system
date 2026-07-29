@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { cloneAndParseRepo } from '@/grader/github';
-import { evaluateCodeWithGroq } from '@/grader/groq';
 import { submitRatelimit } from '@/lib/ratelimit';
 
 // ── Security Constants ──────────────────────────────────────────────────────
@@ -114,9 +112,7 @@ export async function POST(request: NextRequest) {
     const finalGithubUrl = validatedUrl.toString();
 
     // ── 4. Database writes (session client — RLS enforced) ────────────────
-    // RLS policy allows insert when user_id = auth.uid()
-
-    // 4a. Insert applicant
+    // 4a. Insert applicant with status 'pending'
     const { data: applicant, error: applicantError } = await supabase
       .from('applicants')
       .insert({
@@ -125,7 +121,7 @@ export async function POST(request: NextRequest) {
         email: finalEmail,
         github_url: finalGithubUrl,
         language: language || 'TypeScript',
-        status: 'grading' as const,
+        status: 'pending' as const,
       })
       .select('id')
       .single();
@@ -138,33 +134,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4b. Clone & parse repository
-    let rawCodeText = '';
-    try {
-      rawCodeText = await cloneAndParseRepo(finalGithubUrl);
-    } catch (gitErr) {
-      console.error('[Submit API Error] Repository scraping failed:', gitErr);
-      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
-      return NextResponse.json(
-        { error: 'Failed to fetch repository. Please check the URL is public and try again.' },
-        { status: 400 }
-      );
-    }
-
-    // 4c. Insert submission
-    const { data: submission, error: submissionError } = await supabase
+    // 4b. Insert submission record (queued for worker processing)
+    const { error: submissionError } = await supabase
       .from('submissions')
       .insert({
         applicant_id: applicant.id,
         repo_url: finalGithubUrl,
-        raw_code_text: rawCodeText,
         submitted_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
+      });
 
-    if (submissionError || !submission) {
-      console.error('[Submit API Error] Failed to store raw submission code:', submissionError);
+    if (submissionError) {
+      console.error('[Submit API Error] Failed to create submission record:', submissionError);
       await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
       return NextResponse.json(
         { error: 'Failed to save submission.' },
@@ -172,50 +152,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4d. Run Groq AI Evaluation
-    let evaluationResult;
-    try {
-      evaluationResult = await evaluateCodeWithGroq(rawCodeText, language || 'TypeScript');
-    } catch (evalErr) {
-      console.error('[Submit API Error] Groq AI evaluation failed:', evalErr);
-      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
-      return NextResponse.json(
-        { error: 'AI evaluation failed. Please try again later.' },
-        { status: 500 }
-      );
-    }
-
-    // 4e. Save evaluation
-    const { error: evalSaveError } = await supabase
-      .from('evaluations')
-      .insert({
-        submission_id: submission.id,
-        overall_score: evaluationResult.overall_score,
-        criteria_scores: evaluationResult.criteria_scores as unknown as import('@/lib/database.types').Json,
-        ai_summary: evaluationResult.summary,
-        vulnerabilities: evaluationResult.vulnerabilities as unknown as import('@/lib/database.types').Json,
-        evaluated_at: new Date().toISOString(),
-      });
-
-    if (evalSaveError) {
-      console.error('[Submit API Error] Failed to save evaluation scores:', evalSaveError);
-      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
-      return NextResponse.json(
-        { error: 'Failed to record evaluation.' },
-        { status: 500 }
-      );
-    }
-
-    // 4f. Mark applicant as completed
-    await supabase
-      .from('applicants')
-      .update({ status: 'completed' as const })
-      .eq('id', applicant.id);
+    // Note: AI grading (clone + Groq evaluation) is offloaded to the background worker
+    // to prevent request timeouts and DoS attack vectors.
 
     return NextResponse.json({
       success: true,
       applicantId: applicant.id,
-      evaluation: evaluationResult,
+      status: 'pending',
+      message: 'Submission successfully received and queued for AI grading.',
     });
   } catch (err) {
     console.error('[Submit API Unexpected Error]:', err);

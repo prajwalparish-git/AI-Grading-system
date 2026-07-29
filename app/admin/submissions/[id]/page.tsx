@@ -1,7 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { fetchSubmissionById } from '@/lib/api/leaderboard'
+import { fetchSubmissionByIdServer } from '@/lib/api/leaderboard-server'
 import { CodeBlock } from '@/components/admin/CodeBlock'
 import { SkillRadarChart } from '@/components/admin/SkillRadarChart'
 import { AIReportCard } from '@/components/admin/AIReportCard'
@@ -28,7 +28,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const { id } = await params
-  const submission = fetchSubmissionById(id)
+  const submission = await fetchSubmissionByIdServer(id)
   if (!submission) {
     return { title: 'Submission Not Found // AI Grading System' }
   }
@@ -151,7 +151,7 @@ export default async function SubmissionDrillDownPage({ params }: PageProps) {
   const { id } = await params
 
   // Fetch via the data access layer (swap-ready for real API)
-  const submission = fetchSubmissionById(id)
+  const submission = await fetchSubmissionByIdServer(id)
 
   // 404 — submission ID not found
   if (!submission) {

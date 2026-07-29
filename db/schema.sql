@@ -1,6 +1,14 @@
 -- AI Grading System — Unified Schema (Model A)
 -- Canonical tables: applicants → submissions → evaluations
 -- integrity_events linked to auth.users directly
+--
+-- SECURITY & SERVICE ROLE ARCHITECTURE:
+-- 1. Row Level Security (RLS) is enabled on all tables.
+-- 2. Authenticated users interact via anon/session clients and can ONLY read/insert/update
+--    their own records (where user_id = auth.uid() or linked via submission/applicant ownership).
+-- 3. Administrative operations check user role strictly via auth.jwt() -> 'app_metadata' ->> 'role' = 'admin'.
+-- 4. Background workers (e.g. grader script) and privileged administrative operations use the
+--    Supabase Service Role Client (createAdminClient), which bypasses RLS safely on the server.
 
 -- Enum for Applicant Status
 do $$ begin
@@ -58,7 +66,26 @@ alter table public.submissions enable row level security;
 alter table public.evaluations enable row level security;
 alter table public.integrity_events enable row level security;
 
--- Applicants: authenticated users can read/insert their own rows; admins read all
+-- Drop existing policies if present for idempotency
+drop policy if exists "Users can view own applicant" on public.applicants;
+drop policy if exists "Admins can view all applicants" on public.applicants;
+drop policy if exists "Users can insert own applicant" on public.applicants;
+drop policy if exists "Service role can update applicants" on public.applicants;
+drop policy if exists "Users can update own applicant" on public.applicants;
+
+drop policy if exists "Users can view own submissions" on public.submissions;
+drop policy if exists "Admins can view all submissions" on public.submissions;
+drop policy if exists "Users can insert own submissions" on public.submissions;
+
+drop policy if exists "Users can view own evaluations" on public.evaluations;
+drop policy if exists "Admins can view all evaluations" on public.evaluations;
+drop policy if exists "Authenticated can insert evaluations" on public.evaluations;
+drop policy if exists "Users can insert own evaluations" on public.evaluations;
+
+drop policy if exists "Users can insert own integrity events" on public.integrity_events;
+drop policy if exists "Admins can view all integrity events" on public.integrity_events;
+
+-- Applicants RLS
 create policy "Users can view own applicant"
     on public.applicants for select
     using (user_id = auth.uid());
@@ -71,11 +98,12 @@ create policy "Users can insert own applicant"
     on public.applicants for insert
     with check (user_id = auth.uid());
 
-create policy "Service role can update applicants"
+create policy "Users can update own applicant"
     on public.applicants for update
-    using (true);
+    using (user_id = auth.uid())
+    with check (user_id = auth.uid());
 
--- Submissions: inherit access through applicant ownership
+-- Submissions RLS
 create policy "Users can view own submissions"
     on public.submissions for select
     using (
@@ -96,7 +124,7 @@ create policy "Users can insert own submissions"
         )
     );
 
--- Evaluations: inherit access through submission → applicant ownership
+-- Evaluations RLS
 create policy "Users can view own evaluations"
     on public.evaluations for select
     using (
@@ -111,11 +139,17 @@ create policy "Admins can view all evaluations"
     on public.evaluations for select
     using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
-create policy "Authenticated can insert evaluations"
+create policy "Users can insert own evaluations"
     on public.evaluations for insert
-    with check (true);
+    with check (
+        submission_id in (
+            select s.id from public.submissions s
+            join public.applicants a on a.id = s.applicant_id
+            where a.user_id = auth.uid()
+        )
+    );
 
--- Integrity Events: users can insert their own; admins can read all
+-- Integrity Events RLS
 create policy "Users can insert own integrity events"
     on public.integrity_events for insert
     with check (user_id = auth.uid());
@@ -123,3 +157,4 @@ create policy "Users can insert own integrity events"
 create policy "Admins can view all integrity events"
     on public.integrity_events for select
     using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+

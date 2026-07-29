@@ -38,6 +38,9 @@ async function main() {
     console.log(`─── Applicant: ${app.name} (${app.github_url}) ───`);
 
     try {
+      // Mark applicant status as 'grading'
+      await supabase.from('applicants').update({ status: 'grading' }).eq('id', app.id);
+
       console.log('  Parsing repo source code...');
       const rawCode = await cloneAndParseRepo(app.github_url);
 
@@ -49,7 +52,9 @@ async function main() {
         .from('submissions')
         .select('id')
         .eq('applicant_id', app.id)
-        .single();
+        .order('submitted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       let submissionId = submission?.id;
 
@@ -66,17 +71,32 @@ async function main() {
 
         if (subErr) throw subErr;
         submissionId = newSub.id;
+      } else {
+        // Update raw_code_text on existing submission
+        await supabase
+          .from('submissions')
+          .update({ raw_code_text: rawCode })
+          .eq('id', submissionId);
       }
 
-      const { error: evalErr } = await supabase.from('evaluations').insert({
-        submission_id: submissionId,
-        overall_score: evaluation.overall_score,
-        criteria_scores: evaluation.criteria_scores as unknown as import('../lib/database.types').Json,
-        ai_summary: evaluation.summary,
-        vulnerabilities: evaluation.vulnerabilities as unknown as import('../lib/database.types').Json,
-      });
+      // Idempotency check: verify if evaluation already exists
+      const { data: existingEval } = await supabase
+        .from('evaluations')
+        .select('id')
+        .eq('submission_id', submissionId)
+        .maybeSingle();
 
-      if (evalErr) throw evalErr;
+      if (!existingEval) {
+        const { error: evalErr } = await supabase.from('evaluations').insert({
+          submission_id: submissionId,
+          overall_score: evaluation.overall_score,
+          criteria_scores: evaluation.criteria_scores as unknown as import('../lib/database.types').Json,
+          ai_summary: evaluation.summary,
+          vulnerabilities: evaluation.vulnerabilities as unknown as import('../lib/database.types').Json,
+        });
+
+        if (evalErr) throw evalErr;
+      }
 
       await supabase.from('applicants').update({ status: 'completed' }).eq('id', app.id);
       console.log(`  ✓ Graded: Overall Score ${evaluation.overall_score}/100\n`);

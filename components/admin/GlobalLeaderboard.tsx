@@ -15,6 +15,7 @@ import {
   SCORE_THRESHOLDS,
   type LeaderboardFilters,
   type LeaderboardEntry,
+  type PaginatedResult,
   type SortField,
   type ScoreThreshold,
   type ProgrammingLanguage,
@@ -177,14 +178,36 @@ function getRankBadge(rank: number) {
 
 export function GlobalLeaderboard() {
   const [filters, setFilters] = useState<LeaderboardFilters>({ ...DEFAULT_FILTERS })
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [selectedApplicant, setSelectedApplicant] = useState<LeaderboardEntry | null>(null)
+  const [result, setResult] = useState<PaginatedResult<LeaderboardEntry>>({
+    data: [],
+    totalCount: 0,
+    page: 1,
+    pageSize: 15,
+    totalPages: 1,
+  })
 
-  // ── Data fetch (synchronous mock — replace with useEffect + async in production) ──
-  const result = useMemo(() => {
-    // Simulate a loading flash for filter changes
-    return fetchLeaderboard(filters)
+  // ── Async Data fetch ──
+  React.useEffect(() => {
+    let isMounted = true
+    setIsLoading(true)
+    fetchLeaderboard(filters)
+      .then((res) => {
+        if (isMounted) {
+          setResult(res)
+          setIsLoading(false)
+        }
+      })
+      .catch((err) => {
+        console.error('[Leaderboard fetch error]:', err)
+        if (isMounted) setIsLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
   }, [filters])
 
   // ── Filter updaters (reset page to 1 on filter change) ──
@@ -415,7 +438,7 @@ export function GlobalLeaderboard() {
             )}
 
             {/* Data rows */}
-            {!isLoading && result.data.map((entry) => {
+            {!isLoading && result.data.map((entry: LeaderboardEntry) => {
               // Grading-in-progress skeleton row
               if (entry.status === 'grading' || entry.status === 'submitted') {
                 return <GradingInProgressRow key={entry.id} entry={entry} />
