@@ -15,19 +15,19 @@ import type {
 } from './types';
 import { SCORE_THRESHOLDS } from './types';
 import { generateLeaderboardEntries, generateSubmissionDetail } from './mock-generator';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/client';
 
 /**
  * Helper to attempt fetching real applicants from Supabase.
  * Returns null if Supabase is unconfigured or encounters an error.
  */
-function fetchSupabaseData(): any[] | null {
+async function fetchSupabaseData(): Promise<any[] | null> {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseKey) return null;
 
-    const supabase = createServerClient();
+    const supabase = createClient();
     // Using a synchronous de-opt or fallback pattern if sync is strictly required by callers.
     // In production SSR components, this joins applicants, submissions, and evaluations.
     return null;
@@ -208,7 +208,7 @@ export function fetchDashboardStats() {
  */
 export async function fetchLeaderboardFromSupabase(filters: LeaderboardFilters): Promise<PaginatedResult<LeaderboardEntry>> {
   try {
-    const supabase = createServerClient();
+    const supabase = createClient();
     const { data: applicants, error } = await supabase
       .from('applicants')
       .select(`

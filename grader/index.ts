@@ -71,9 +71,9 @@ async function main() {
       const { error: evalErr } = await supabase.from('evaluations').insert({
         submission_id: submissionId,
         overall_score: evaluation.overall_score,
-        criteria_scores: evaluation.criteria_scores,
+        criteria_scores: evaluation.criteria_scores as unknown as import('../lib/database.types').Json,
         ai_summary: evaluation.summary,
-        vulnerabilities: evaluation.vulnerabilities,
+        vulnerabilities: evaluation.vulnerabilities as unknown as import('../lib/database.types').Json,
       });
 
       if (evalErr) throw evalErr;

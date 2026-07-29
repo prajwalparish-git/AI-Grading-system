@@ -1,7 +1,7 @@
 /**
  * Unified Database Types — Model A
  *
- * Canonical tables: applicants → submissions → evaluations
+ * Canonical tables: applicants → submissions → evaluations + integrity_events
  * This file MUST mirror db/schema.sql exactly.
  */
 
@@ -15,6 +15,7 @@ export interface Database {
       applicants: {
         Row: {
           id: string
+          user_id: string | null
           name: string
           email: string
           github_url: string
@@ -24,6 +25,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          user_id?: string | null
           name: string
           email: string
           github_url: string
@@ -33,6 +35,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          user_id?: string | null
           name?: string
           email?: string
           github_url?: string
@@ -115,34 +118,26 @@ export interface Database {
       integrity_events: {
         Row: {
           id: string
-          applicant_id: string
+          user_id: string
           type: string
           payload: Json | null
           created_at: string
         }
         Insert: {
           id?: string
-          applicant_id: string
+          user_id: string
           type: string
           payload?: Json | null
           created_at?: string
         }
         Update: {
           id?: string
-          applicant_id?: string
+          user_id?: string
           type?: string
           payload?: Json | null
           created_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: 'integrity_events_applicant_id_fkey'
-            columns: ['applicant_id']
-            isOneToOne: false
-            referencedRelation: 'applicants'
-            referencedColumns: ['id']
-          }
-        ]
+        Relationships: []
       }
     }
     Views: {

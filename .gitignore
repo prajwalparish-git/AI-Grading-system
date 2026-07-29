@@ -6,7 +6,9 @@ node_modules/
 out/
 
 # Environment variables (secrets)
-.env*
+.env
+.env.*
+!.env.example
 
 # OS files
 .DS_Store
@@ -14,3 +16,6 @@ Thumbs.db
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Vercel
+.vercel

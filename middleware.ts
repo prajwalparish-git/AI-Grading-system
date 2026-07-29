@@ -5,24 +5,27 @@ import { NextResponse, type NextRequest } from 'next/server'
  * Route protection middleware.
  *
  * Public routes (no auth required):
- *   /login, /submit, /results, /results/*, /api/submit, /api/results
+ *   /login, /submit (page only), /results, /results/*
  *
  * Protected routes:
- *   /admin/* — requires a valid authenticated session AND admin role
+ *   /api/*       — require a valid authenticated session (no blanket open)
+ *   /admin/*     — require authenticated session AND admin role
  *   All other routes — require a valid authenticated session
  */
 
 // Routes that are fully public (no session required)
-const PUBLIC_PATHS = ['/login', '/submit', '/results']
-const PUBLIC_API_PATHS = ['/api/submit', '/api/results']
+const PUBLIC_PATHS = ['/login']
+
+// Pages that are public but not API routes
+const PUBLIC_PAGE_PATHS = ['/submit', '/results']
 
 function isPublicRoute(pathname: string): boolean {
-  // Exact match or starts-with for public pages
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  // Exact match for fully public paths
+  if (PUBLIC_PATHS.some((p) => pathname === p)) {
     return true
   }
-  // Exact match for public API endpoints
-  if (PUBLIC_API_PATHS.some((p) => pathname === p)) {
+  // Pages that students can view without auth (submit form, results viewer)
+  if (PUBLIC_PAGE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return true
   }
   return false
@@ -52,18 +55,23 @@ export async function middleware(request: NextRequest) {
   // Allow public routes through without any auth check
   if (isPublicRoute(path)) return response
 
-  // For all protected routes, verify session
+  // For all protected routes (including /api/*), verify session
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
+    // API routes return 401 JSON; pages redirect to login
+    if (path.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Authentication required.' },
+        { status: 401 }
+      )
+    }
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Admin routes require admin role — checked via applicants or a
-  // dedicated admin flag. For now, we check Supabase auth metadata.
+  // Admin routes require admin role — checked via Supabase auth metadata.
   if (path.startsWith('/admin')) {
-    const { data: { user: adminUser } } = await supabase.auth.getUser()
-    const role = adminUser?.app_metadata?.role ?? adminUser?.user_metadata?.role
+    const role = user.app_metadata?.role ?? user.user_metadata?.role
 
     if (role !== 'admin') {
       return NextResponse.redirect(new URL('/submit', request.url))

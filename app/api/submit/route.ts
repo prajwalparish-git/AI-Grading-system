@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/lib/supabase/server';
 import { cloneAndParseRepo } from '@/grader/github';
 import { evaluateCodeWithGroq } from '@/grader/groq';
-import { submitRatelimit, getIp } from '@/lib/ratelimit';
+import { submitRatelimit } from '@/lib/ratelimit';
 
 // ── Security Constants ──────────────────────────────────────────────────────
 const ALLOWED_GITHUB_HOSTNAME = 'github.com';
@@ -22,7 +22,7 @@ function parseAndValidateGithubUrl(raw: string): URL {
   }
 
   if (url.hostname !== ALLOWED_GITHUB_HOSTNAME) {
-    throw new Error(`URL hostname must be ${ALLOWED_GITHUB_HOSTNAME}. Received: ${url.hostname}`);
+    throw new Error(`URL hostname must be ${ALLOWED_GITHUB_HOSTNAME}.`);
   }
 
   if (url.protocol !== 'https:') {
@@ -40,9 +40,19 @@ function parseAndValidateGithubUrl(raw: string): URL {
 
 export async function POST(request: NextRequest) {
   try {
-    // ── 1. Rate limiting ──────────────────────────────────────────────────
-    const ip = getIp(request);
-    const { success: withinLimit } = await submitRatelimit.limit(ip);
+    // ── 1. Authentication ─────────────────────────────────────────────────
+    const supabase = await createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Authentication required.' },
+        { status: 401 }
+      );
+    }
+
+    // ── 2. Rate limiting (per user ID) ────────────────────────────────────
+    const { success: withinLimit } = await submitRatelimit.limit(user.id);
 
     if (!withinLimit) {
       return NextResponse.json(
@@ -51,8 +61,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── 2. Parse & validate input ─────────────────────────────────────────
-    const body = await request.json();
+    // ── 3. Parse & validate input ─────────────────────────────────────────
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    }
+
     const {
       applicantName,
       name,
@@ -60,7 +76,7 @@ export async function POST(request: NextRequest) {
       githubUrl,
       github_url,
       language = 'TypeScript',
-    } = body;
+    } = body as Record<string, string | undefined>;
 
     const finalName = (applicantName || name || '').trim();
     const finalEmail = (email || '').trim().toLowerCase();
@@ -87,27 +103,29 @@ export async function POST(request: NextRequest) {
     let validatedUrl: URL;
     try {
       validatedUrl = parseAndValidateGithubUrl(rawGithubUrl);
-    } catch (urlErr: any) {
+    } catch (urlErr) {
+      const message = urlErr instanceof Error ? urlErr.message : 'Invalid GitHub URL.';
       return NextResponse.json(
-        { error: `GitHub URL validation failed: ${urlErr.message}` },
+        { error: `GitHub URL validation failed: ${message}` },
         { status: 400 }
       );
     }
 
     const finalGithubUrl = validatedUrl.toString();
 
-    // ── 3. Database writes (admin client — bypasses RLS) ──────────────────
-    const supabase = createAdminClient();
+    // ── 4. Database writes (session client — RLS enforced) ────────────────
+    // RLS policy allows insert when user_id = auth.uid()
 
-    // 3a. Insert applicant
+    // 4a. Insert applicant
     const { data: applicant, error: applicantError } = await supabase
       .from('applicants')
       .insert({
+        user_id: user.id,
         name: finalName,
         email: finalEmail,
         github_url: finalGithubUrl,
-        language,
-        status: 'grading',
+        language: language || 'TypeScript',
+        status: 'grading' as const,
       })
       .select('id')
       .single();
@@ -115,25 +133,25 @@ export async function POST(request: NextRequest) {
     if (applicantError || !applicant) {
       console.error('[Submit API Error] Failed to create applicant record:', applicantError);
       return NextResponse.json(
-        { error: 'Failed to record applicant submission details.' },
+        { error: 'Failed to record submission.' },
         { status: 500 }
       );
     }
 
-    // 3b. Clone & parse repository
+    // 4b. Clone & parse repository
     let rawCodeText = '';
     try {
       rawCodeText = await cloneAndParseRepo(finalGithubUrl);
-    } catch (gitErr: any) {
+    } catch (gitErr) {
       console.error('[Submit API Error] Repository scraping failed:', gitErr);
-      await supabase.from('applicants').update({ status: 'error' }).eq('id', applicant.id);
+      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
       return NextResponse.json(
-        { error: `GitHub Ingestion Error: ${gitErr.message}` },
+        { error: 'Failed to fetch repository. Please check the URL is public and try again.' },
         { status: 400 }
       );
     }
 
-    // 3c. Insert submission
+    // 4c. Insert submission
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .insert({
@@ -147,51 +165,51 @@ export async function POST(request: NextRequest) {
 
     if (submissionError || !submission) {
       console.error('[Submit API Error] Failed to store raw submission code:', submissionError);
-      await supabase.from('applicants').update({ status: 'error' }).eq('id', applicant.id);
+      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
       return NextResponse.json(
-        { error: 'Failed to save submission source code.' },
+        { error: 'Failed to save submission.' },
         { status: 500 }
       );
     }
 
-    // 3d. Run Groq AI Evaluation
+    // 4d. Run Groq AI Evaluation
     let evaluationResult;
     try {
-      evaluationResult = await evaluateCodeWithGroq(rawCodeText, language);
-    } catch (evalErr: any) {
+      evaluationResult = await evaluateCodeWithGroq(rawCodeText, language || 'TypeScript');
+    } catch (evalErr) {
       console.error('[Submit API Error] Groq AI evaluation failed:', evalErr);
-      await supabase.from('applicants').update({ status: 'error' }).eq('id', applicant.id);
+      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
       return NextResponse.json(
-        { error: `AI Grading Error: ${evalErr.message}` },
+        { error: 'AI evaluation failed. Please try again later.' },
         { status: 500 }
       );
     }
 
-    // 3e. Save evaluation
+    // 4e. Save evaluation
     const { error: evalSaveError } = await supabase
       .from('evaluations')
       .insert({
         submission_id: submission.id,
         overall_score: evaluationResult.overall_score,
-        criteria_scores: evaluationResult.criteria_scores,
+        criteria_scores: evaluationResult.criteria_scores as unknown as import('@/lib/database.types').Json,
         ai_summary: evaluationResult.summary,
-        vulnerabilities: evaluationResult.vulnerabilities,
+        vulnerabilities: evaluationResult.vulnerabilities as unknown as import('@/lib/database.types').Json,
         evaluated_at: new Date().toISOString(),
       });
 
     if (evalSaveError) {
       console.error('[Submit API Error] Failed to save evaluation scores:', evalSaveError);
-      await supabase.from('applicants').update({ status: 'error' }).eq('id', applicant.id);
+      await supabase.from('applicants').update({ status: 'error' as const }).eq('id', applicant.id);
       return NextResponse.json(
-        { error: 'Failed to record AI evaluation metrics.' },
+        { error: 'Failed to record evaluation.' },
         { status: 500 }
       );
     }
 
-    // 3f. Mark applicant as completed
+    // 4f. Mark applicant as completed
     await supabase
       .from('applicants')
-      .update({ status: 'completed' })
+      .update({ status: 'completed' as const })
       .eq('id', applicant.id);
 
     return NextResponse.json({
@@ -199,10 +217,10 @@ export async function POST(request: NextRequest) {
       applicantId: applicant.id,
       evaluation: evaluationResult,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error('[Submit API Unexpected Error]:', err);
     return NextResponse.json(
-      { error: err.message || 'Internal Server Error' },
+      { error: 'Internal server error.' },
       { status: 500 }
     );
   }

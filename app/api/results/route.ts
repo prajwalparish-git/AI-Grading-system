@@ -1,11 +1,11 @@
-import { NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 
 /**
- * GET /api/results?applicantId=<uuid>
+ * GET /api/results
  *
- * Public endpoint — returns evaluation results for a given applicant.
+ * Authenticated endpoint — returns evaluation results for the current user.
  * Queries the unified Model A schema: applicants → submissions → evaluations.
+ * RLS ensures only the user's own data is returned.
  */
 
 const HIDDEN_CRITERIA = new Set([
@@ -15,24 +15,26 @@ const HIDDEN_CRITERIA = new Set([
   'Integrity & Honesty',
 ]);
 
-export async function GET(request: NextRequest) {
-  const applicantId = request.nextUrl.searchParams.get('applicantId');
+export async function GET() {
+  const supabase = await createServerClient();
 
-  if (!applicantId) {
-    return Response.json({ error: 'Missing required query parameter: applicantId' }, { status: 400 });
+  // Auth check (middleware also enforces this, but defence in depth)
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return Response.json({ error: 'Authentication required.' }, { status: 401 });
   }
 
-  const supabase = createServerClient();
-
-  // 1. Fetch the applicant record
+  // 1. Fetch the applicant record for the current user (RLS-scoped)
   const { data: applicant, error: applicantError } = await supabase
     .from('applicants')
     .select('id, name, status, github_url, created_at')
-    .eq('id', applicantId)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .single();
 
   if (applicantError || !applicant) {
-    return Response.json({ error: 'Applicant not found.' }, { status: 404 });
+    return Response.json({ error: 'No submission found for this account.' }, { status: 404 });
   }
 
   if (applicant.status !== 'completed') {
@@ -43,13 +45,13 @@ export async function GET(request: NextRequest) {
   const { data: submission } = await supabase
     .from('submissions')
     .select('id, repo_url, submitted_at')
-    .eq('applicant_id', applicantId)
+    .eq('applicant_id', applicant.id)
     .order('submitted_at', { ascending: false })
     .limit(1)
     .single();
 
   if (!submission) {
-    return Response.json({ error: 'No submission found for this applicant.' }, { status: 404 });
+    return Response.json({ error: 'No submission found.' }, { status: 404 });
   }
 
   // 3. Fetch evaluation for this submission

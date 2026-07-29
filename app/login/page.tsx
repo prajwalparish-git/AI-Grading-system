@@ -25,15 +25,11 @@ export default function LoginPage() {
       return
     }
 
-    // Redirect based on role
+    // Redirect based on role from auth metadata — no separate users table
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user!.id)
-      .single()
+    const role = user?.app_metadata?.role ?? user?.user_metadata?.role
 
-    router.push(profile?.role === 'admin' ? '/admin' : '/submit')
+    router.push(role === 'admin' ? '/admin' : '/submit')
   }
 
   return (

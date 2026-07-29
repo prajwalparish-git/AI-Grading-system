@@ -1,34 +1,34 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase/server'
 
 export default async function IntegrityPage() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Count events per user, ordered by most suspicious
+  // Fetch integrity events — uses user_id and created_at (not 'at')
   const { data: events } = await supabase
     .from('integrity_events')
-    .select('user_id, type, at, payload')
-    .order('at', { ascending: false })
+    .select('user_id, type, created_at, payload')
+    .order('created_at', { ascending: false })
 
   // Aggregate per user
   const byUser = new Map<string, { types: Record<string, number>; lastAt: string }>()
   for (const e of events ?? []) {
-    if (!byUser.has(e.user_id)) byUser.set(e.user_id, { types: {}, lastAt: e.at })
+    if (!byUser.has(e.user_id)) byUser.set(e.user_id, { types: {}, lastAt: e.created_at })
     const agg = byUser.get(e.user_id)!
     agg.types[e.type] = (agg.types[e.type] ?? 0) + 1
-    if (e.at > agg.lastAt) agg.lastAt = e.at
+    if (e.created_at > agg.lastAt) agg.lastAt = e.created_at
   }
 
-  // Fetch user profiles for flagged user_ids
+  // Fetch applicant profiles for flagged user_ids (applicants.user_id links to auth.users)
   const userIds = [...byUser.keys()]
   const { data: profiles } = userIds.length > 0
-    ? await supabase.from('users').select('id, name, email').in('id', userIds)
+    ? await supabase.from('applicants').select('user_id, name, email').in('user_id', userIds)
     : { data: [] }
 
-  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
+  const profileMap = new Map((profiles ?? []).map((p) => [p.user_id, p]))
 
   const rows = [...byUser.entries()]
     .map(([uid, agg]) => ({

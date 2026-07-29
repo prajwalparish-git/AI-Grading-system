@@ -1,24 +1,26 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase/server'
 
 export default async function SubmissionsPage() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Fetch submissions joined with applicants (not 'users' — that table doesn't exist)
   const { data: submissions } = await supabase
     .from('submissions')
     .select(`
-      id, repo_url, demo_url, status, submitted_at,
-      users ( name, email, cohort )
+      id, repo_url, submitted_at,
+      applicants ( name, email, status )
     `)
     .order('submitted_at', { ascending: false })
 
   const statusColor: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-600',
-    submitted: 'bg-yellow-100 text-yellow-700',
-    graded: 'bg-green-100 text-green-700',
+    pending: 'bg-gray-100 text-gray-600',
+    grading: 'bg-yellow-100 text-yellow-700',
+    completed: 'bg-green-100 text-green-700',
+    error: 'bg-red-100 text-red-700',
   }
 
   return (
@@ -45,12 +47,13 @@ export default async function SubmissionsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {(submissions ?? []).map((s) => {
-                const profile = Array.isArray(s.users) ? s.users[0] : s.users
+                const applicant = Array.isArray(s.applicants) ? s.applicants[0] : s.applicants
+                const status = applicant?.status ?? 'pending'
                 return (
                   <tr key={s.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{profile?.name ?? '—'}</p>
-                      <p className="text-xs text-gray-400">{profile?.email}</p>
+                      <p className="font-medium text-gray-800">{applicant?.name ?? '—'}</p>
+                      <p className="text-xs text-gray-400">{applicant?.email}</p>
                     </td>
                     <td className="px-4 py-3">
                       <a
@@ -63,15 +66,15 @@ export default async function SubmissionsPage() {
                       </a>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[s.status]}`}>
-                        {s.status}
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[status] ?? statusColor.pending}`}>
+                        {status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {s.submitted_at ? new Date(s.submitted_at).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {s.status === 'graded' && (
+                      {status === 'completed' && (
                         <Link href={`/admin/grades/${s.id}`} className="text-indigo-600 hover:underline text-xs">
                           View grades
                         </Link>

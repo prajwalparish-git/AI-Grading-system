@@ -36,8 +36,7 @@ export async function createServerClient() {
   );
 }
 
-// Backward-compatible alias
-export const createServerSupabaseClient = createServerClient;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. Admin Client (SERVICE ROLE key) — BYPASSES RLS
@@ -64,6 +63,3 @@ export function createAdminClient() {
     },
   });
 }
-
-// Backward-compatible alias (old callers that used createServiceClient)
-export const createServiceClient = createAdminClient;

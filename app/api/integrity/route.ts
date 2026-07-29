@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server'
-import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase/server'
 import { integrityRatelimit } from '@/lib/ratelimit'
 
 const VALID_TYPES = new Set(['paste', 'copy', 'cut', 'blur', 'fast_paste'])
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response(null, { status: 204 }) // silently drop unauthenticated
 
@@ -24,12 +24,11 @@ export async function POST(request: NextRequest) {
 
   if (!VALID_TYPES.has(type as string)) return new Response(null, { status: 204 })
 
-  const service = createServiceClient()
-  await service.from('integrity_events').insert({
+  // Use session client — RLS policy allows insert when user_id = auth.uid()
+  await supabase.from('integrity_events').insert({
     user_id: user.id,
-    type: type as 'paste' | 'copy' | 'cut' | 'blur' | 'fast_paste',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    payload: { field, ...rest } as any,
+    type: type as string,
+    payload: { field, ...rest } as unknown as import('@/lib/database.types').Json,
   })
 
   return new Response(null, { status: 204 })

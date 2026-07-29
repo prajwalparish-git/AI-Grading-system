@@ -1,10 +1,12 @@
 import { notFound } from 'next/navigation'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 
 /**
  * /results/[id] — Public results page for applicants.
  * Queries the unified Model A schema: applicants → submissions → evaluations.
- * No login required — the applicant ID acts as a capability token.
+ * Uses the session/anon client (RLS-aware) instead of service-role admin client.
+ * The applicant ID acts as a capability token — RLS SELECT policy allows
+ * reading completed applicant records.
  */
 
 const HIDDEN_CRITERIA = new Set([
@@ -28,8 +30,8 @@ export default async function ResultsByIdPage({
 }) {
   const { id: applicantId } = await params
 
-  // Use admin client since this is a public page (no user session)
-  const supabase = createAdminClient()
+  // Use session client (anon key, RLS-aware) — NOT the admin/service-role client
+  const supabase = await createServerClient()
 
   // 1. Fetch applicant
   const { data: applicant } = await supabase

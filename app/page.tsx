@@ -1,17 +1,13 @@
 import { redirect } from 'next/navigation'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase/server'
 
 export default async function Home() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  redirect(profile?.role === 'admin' ? '/admin' : '/submit')
+  // Check role from auth metadata — no separate users table needed
+  const role = user.app_metadata?.role ?? user.user_metadata?.role
+  redirect(role === 'admin' ? '/admin' : '/submit')
 }

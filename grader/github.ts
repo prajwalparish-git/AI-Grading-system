@@ -14,6 +14,10 @@ const MAX_FILE_SIZE_BYTES = 100_000;
 const MAX_TOTAL_OUTPUT_BYTES = 2_000_000;
 /** Timeout for git clone operations (30 seconds). */
 const GIT_CLONE_TIMEOUT_MS = 30_000;
+/** Timeout for GitHub API requests (30 seconds). */
+const FETCH_TIMEOUT_MS = 30_000;
+/** Timeout for individual raw file fetches (15 seconds). */
+const FILE_FETCH_TIMEOUT_MS = 15_000;
 
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -137,7 +141,10 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
     const headers = getHeaders();
 
     // 1. Fetch Repository Info to obtain default branch
-    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
     if (!repoRes.ok) {
       if (repoRes.status === 404) {
@@ -157,7 +164,7 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
     // 2. Fetch recursive git tree
     const treeRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`,
-      { headers }
+      { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
     );
 
     if (!treeRes.ok) {
@@ -194,7 +201,10 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
       try {
         const rawRes = await fetch(
           `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${file.path}`,
-          { headers: GITHUB_TOKEN ? { Authorization: `token ${GITHUB_TOKEN}` } : {} }
+          {
+            headers: GITHUB_TOKEN ? { Authorization: `token ${GITHUB_TOKEN}` } : {},
+            signal: AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS),
+          }
         );
 
         if (rawRes.ok) {
@@ -215,8 +225,9 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
     }
 
     return flattenedChunks.join('\n');
-  } catch (error: any) {
-    console.error(`[GitHub Scraper Error] Failed to parse repository "${githubUrl}":`, error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[GitHub Scraper Error] Failed to parse repository "${githubUrl}":`, message);
     throw error;
   }
 }
