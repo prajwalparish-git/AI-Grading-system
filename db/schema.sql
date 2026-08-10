@@ -149,4 +149,118 @@ create policy "Admins can view all integrity events"
     on public.integrity_events for select
     using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
+-- 5. Roster Table
+create table if not exists public.roster (
+    id uuid primary key default gen_random_uuid(),
+    usn text unique not null,
+    name text not null,
+    email text not null,
+    batch text,
+    is_active boolean default true,
+    created_at timestamptz default now()
+);
 
+-- 6. Verification Codes Table
+create table if not exists public.verification_codes (
+    id uuid primary key,
+    usn text not null,
+    code_hash text not null,
+    expires_at timestamptz not null,
+    used_at timestamptz,
+    attempt_count int default 0,
+    created_at timestamptz default now()
+);
+
+-- 7. Applications Table
+create table if not exists public.applications (
+    id uuid primary key,
+    roster_id uuid references public.roster(id),
+    user_id uuid references auth.users(id),
+    status text not null, -- pending_otp | verified | submitted | withdrawn | error
+    problem_version text,
+    verified_at timestamptz,
+    submitted_at timestamptz,
+    withdrawn_at timestamptz,
+    edit_deadline timestamptz,
+    created_at timestamptz default now()
+);
+
+-- 8. Projects Table
+create table if not exists public.projects (
+    id uuid primary key,
+    application_id uuid references public.applications(id) on delete cascade,
+    slot int not null check (slot between 1 and 3),
+    repo_url text not null,
+    fetch_status text default 'pending', -- pending | ok | failed
+    fetch_error text,
+    last_checked_at timestamptz,
+    unique(application_id, slot)
+);
+
+-- 9. Audit Log
+create table if not exists public.audit_log (
+    id uuid primary key,
+    application_id uuid,
+    actor_usn text,
+    actor_user_id uuid,
+    action text not null,
+    payload jsonb default '{}',
+    created_at timestamptz default now()
+);
+
+-- ─── Row Level Security for New Tables ────────────────────────────────────────
+
+alter table public.roster enable row level security;
+alter table public.verification_codes enable row level security;
+alter table public.applications enable row level security;
+alter table public.projects enable row level security;
+alter table public.audit_log enable row level security;
+
+drop policy if exists "Admins can view roster" on public.roster;
+create policy "Admins can view roster"
+    on public.roster for select
+    using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+-- (Service role used for other lookups)
+
+drop policy if exists "No client access to verification codes" on public.verification_codes;
+create policy "No client access to verification codes"
+    on public.verification_codes for all
+    using (false);
+
+drop policy if exists "Users can view own applications" on public.applications;
+create policy "Users can view own applications"
+    on public.applications for select
+    using (user_id = auth.uid());
+
+drop policy if exists "Admins can view all applications" on public.applications;
+create policy "Admins can view all applications"
+    on public.applications for select
+    using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+drop policy if exists "Users can view own projects" on public.projects;
+create policy "Users can view own projects"
+    on public.projects for select
+    using (
+        application_id in (
+            select id from public.applications where user_id = auth.uid()
+        )
+    );
+
+drop policy if exists "Admins can view all projects" on public.projects;
+create policy "Admins can view all projects"
+    on public.projects for select
+    using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+drop policy if exists "Admins can view audit log" on public.audit_log;
+create policy "Admins can view audit log"
+    on public.audit_log for select
+    using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+-- ─── Seed Data ─────────────────────────────────────────────────────────────
+
+insert into public.roster (usn, name, email, batch)
+values 
+  ('1RV21CS001', 'Alice Smith', 'alice@example.com', '2021'),
+  ('1RV21CS002', 'Bob Jones', 'bob@example.com', '2021'),
+  ('1RV21CS003', 'Charlie Brown', 'charlie@example.com', '2021')
+on conflict (usn) do nothing;

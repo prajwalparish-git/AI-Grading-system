@@ -100,8 +100,8 @@ function generateMockLeaderboardResult(filters: LeaderboardFilters): PaginatedRe
     switch (filters.sortField) {
       case 'totalScore': va = a.totalScore; vb = b.totalScore; break;
       case 'name': va = a.name; vb = b.name; break;
-      case 'aiIntegrity': va = a.criteria.aiIntegrity; vb = b.criteria.aiIntegrity; break;
-      case 'correctness': va = a.criteria.correctness; vb = b.criteria.correctness; break;
+      case 'integrityHonesty': va = a.criteria.integrityHonesty; vb = b.criteria.integrityHonesty; break;
+      case 'completion': va = a.criteria.completion; vb = b.criteria.completion; break;
       case 'flaggedVulnerabilities': va = a.flaggedVulnerabilities; vb = b.flaggedVulnerabilities; break;
       default: va = a.totalScore; vb = b.totalScore;
     }

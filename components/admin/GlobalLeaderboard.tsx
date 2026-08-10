@@ -385,16 +385,16 @@ export function GlobalLeaderboard() {
               </TableHead>
               <TableHead>Lang</TableHead>
               <TableHead>
-                <button onClick={() => handleSort('correctness')} className="flex items-center space-x-1 hover:text-white transition-colors cursor-pointer">
-                  <span>Correctness</span>
+                <button onClick={() => handleSort('completion')} className="flex items-center space-x-1 hover:text-white transition-colors cursor-pointer">
+                  <span>Completion</span>
                   <ArrowUpDown className="h-3 w-3 text-slate-500" />
                 </button>
               </TableHead>
-              <TableHead>Complexity</TableHead>
-              <TableHead>Cleanliness</TableHead>
+              <TableHead>Innovation</TableHead>
+              <TableHead>Functionality</TableHead>
               <TableHead>
-                <button onClick={() => handleSort('aiIntegrity')} className="flex items-center space-x-1 hover:text-white transition-colors cursor-pointer">
-                  <span>AI Integrity</span>
+                <button onClick={() => handleSort('integrityHonesty')} className="flex items-center space-x-1 hover:text-white transition-colors cursor-pointer">
+                  <span>Integrity</span>
                   <ArrowUpDown className="h-3 w-3 text-slate-500" />
                 </button>
               </TableHead>
@@ -467,24 +467,24 @@ export function GlobalLeaderboard() {
                   </TableCell>
                   <TableCell>{getLanguageBadge(entry.language)}</TableCell>
                   <TableCell className="font-mono text-xs">
-                    <span className="text-emerald-400 font-semibold">{entry.criteria.correctness}%</span>
+                    <span className="text-emerald-400 font-semibold">{entry.criteria.completion}</span>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    <span className="text-blue-400">{entry.criteria.timeComplexity}%</span>
+                    <span className="text-blue-400">{entry.criteria.innovation}</span>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-slate-300">
-                    {entry.criteria.codeCleanliness}%
+                    {entry.criteria.functionality}
                   </TableCell>
                   <TableCell className="font-mono text-xs">
                     {entry.flaggedVulnerabilities > 0 ? (
                       <Badge variant="destructive" className="text-[10px] font-mono bg-rose-500/10 text-rose-400 border-rose-500/30 gap-1">
                         <ShieldAlert className="h-3 w-3" />
-                        {entry.criteria.aiIntegrity}% · {entry.flaggedVulnerabilities} flag{entry.flaggedVulnerabilities > 1 ? 's' : ''}
+                        {entry.criteria.integrityHonesty} · {entry.flaggedVulnerabilities} flag{entry.flaggedVulnerabilities > 1 ? 's' : ''}
                       </Badge>
                     ) : (
                       <Badge variant="success" className="text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1">
                         <ShieldCheck className="h-3 w-3" />
-                        {entry.criteria.aiIntegrity}% Clean
+                        {entry.criteria.integrityHonesty} Clean
                       </Badge>
                     )}
                   </TableCell>
@@ -492,7 +492,7 @@ export function GlobalLeaderboard() {
                     <span className="text-sm font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
                       {entry.totalScore.toFixed(1)}
                     </span>
-                    <span className="text-[10px] text-slate-500"> /100</span>
+                    <span className="text-[10px] text-slate-500"> /10</span>
                   </TableCell>
                   <TableCell>
                     <Badge variant="success" className="text-[10px] font-mono">Graded</Badge>

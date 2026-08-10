@@ -51,16 +51,19 @@ export function mapSupabaseToLeaderboardEntries(records: any[]): LeaderboardEntr
       totalScore: evaluation?.overall_score != null ? Number(evaluation.overall_score) : 0,
       flaggedVulnerabilities: flaggedCount,
       criteria: {
-        correctness: Number(criteriaScores.code_correctness || 0),
-        timeComplexity: Number(criteriaScores.time_complexity || 0),
-        memoryEfficiency: Number(criteriaScores.space_efficiency || 0),
-        codeCleanliness: Number(criteriaScores.code_cleanliness || 0),
-        architecture: Number(criteriaScores.architecture || 0),
-        edgeCases: Number(criteriaScores.edge_cases || 0),
-        unitTesting: Number(criteriaScores.test_suite || 0),
-        security: Number(criteriaScores.security || 0),
+        completion: Number(criteriaScores.completion || 0),
+        innovation: Number(criteriaScores.innovation || 0),
+        codeLiteracy: Number(criteriaScores.code_literacy || 0),
+        gitHygiene: Number(criteriaScores.git_hygiene || 0),
+        architectureStack: Number(criteriaScores.architecture_stack || 0),
+        functionality: Number(criteriaScores.functionality || 0),
+        uiUxDesign: Number(criteriaScores.ui_ux_design || 0),
+        errorHandling: Number(criteriaScores.error_handling || 0),
         documentation: Number(criteriaScores.documentation || 0),
-        aiIntegrity: Number(criteriaScores.ai_integrity || 0),
+        performance: Number(criteriaScores.performance || 0),
+        promptEngineering: Number(criteriaScores.prompt_engineering || 0),
+        apiSecurity: Number(criteriaScores.api_security || 0),
+        integrityHonesty: Number(criteriaScores.integrity_honesty || 0),
       },
     };
   });
@@ -156,8 +159,8 @@ export async function fetchLeaderboardFromSupabase(filters: LeaderboardFilters):
       switch (filters.sortField) {
         case 'totalScore': va = a.totalScore; vb = b.totalScore; break;
         case 'name': va = a.name; vb = b.name; break;
-        case 'aiIntegrity': va = a.criteria.aiIntegrity; vb = b.criteria.aiIntegrity; break;
-        case 'correctness': va = a.criteria.correctness; vb = b.criteria.correctness; break;
+        case 'integrityHonesty': va = a.criteria.integrityHonesty; vb = b.criteria.integrityHonesty; break;
+        case 'completion': va = a.criteria.completion; vb = b.criteria.completion; break;
         case 'flaggedVulnerabilities': va = a.flaggedVulnerabilities; vb = b.flaggedVulnerabilities; break;
         default: va = a.totalScore; vb = b.totalScore;
       }
@@ -248,16 +251,19 @@ export async function fetchSubmissionByIdServer(id: string): Promise<SubmissionD
     const vulns = (Array.isArray(evaluation?.vulnerabilities) ? evaluation.vulnerabilities : []) as unknown as VulnerabilityItem[];
 
     const criteriaList: CriterionScore[] = [
-      { key: 'code_correctness', label: 'Code Correctness', score: Number(criteriaScores.code_correctness || 0), maxScore: 10, weight: 1.5 },
-      { key: 'time_complexity', label: 'Time Complexity', score: Number(criteriaScores.time_complexity || 0), maxScore: 10, weight: 1.0 },
-      { key: 'space_efficiency', label: 'Memory Efficiency', score: Number(criteriaScores.space_efficiency || 0), maxScore: 10, weight: 1.0 },
-      { key: 'code_cleanliness', label: 'Code Cleanliness', score: Number(criteriaScores.code_cleanliness || 0), maxScore: 10, weight: 1.0 },
-      { key: 'architecture', label: 'Architecture & Design', score: Number(criteriaScores.architecture || 0), maxScore: 10, weight: 1.0 },
-      { key: 'edge_cases', label: 'Edge Case Handling', score: Number(criteriaScores.edge_cases || 0), maxScore: 10, weight: 1.0 },
-      { key: 'test_suite', label: 'Unit Testing Suite', score: Number(criteriaScores.test_suite || 0), maxScore: 10, weight: 1.0 },
-      { key: 'security', label: 'Security & Vulnerability Audit', score: Number(criteriaScores.security || 0), maxScore: 10, weight: 1.5 },
-      { key: 'documentation', label: 'Documentation & Readme', score: Number(criteriaScores.documentation || 0), maxScore: 10, weight: 0.5 },
-      { key: 'ai_integrity', label: 'AI Code Integrity Check', score: Number(criteriaScores.ai_integrity || 0), maxScore: 10, weight: 1.0 },
+      { key: 'completion', label: 'Completion', score: Number(criteriaScores.completion || 0), maxScore: 10, weight: 1.0 },
+      { key: 'innovation', label: 'Innovation', score: Number(criteriaScores.innovation || 0), maxScore: 10, weight: 1.0 },
+      { key: 'code_literacy', label: 'Code Literacy', score: Number(criteriaScores.code_literacy || 0), maxScore: 10, weight: 1.0 },
+      { key: 'git_hygiene', label: 'Git Hygiene', score: Number(criteriaScores.git_hygiene || 0), maxScore: 10, weight: 1.0 },
+      { key: 'architecture_stack', label: 'Architecture Stack', score: Number(criteriaScores.architecture_stack || 0), maxScore: 10, weight: 1.0 },
+      { key: 'functionality', label: 'Functionality', score: Number(criteriaScores.functionality || 0), maxScore: 10, weight: 1.0 },
+      { key: 'ui_ux_design', label: 'UI/UX Design', score: Number(criteriaScores.ui_ux_design || 0), maxScore: 10, weight: 1.0 },
+      { key: 'error_handling', label: 'Error Handling', score: Number(criteriaScores.error_handling || 0), maxScore: 10, weight: 1.0 },
+      { key: 'documentation', label: 'Documentation', score: Number(criteriaScores.documentation || 0), maxScore: 10, weight: 1.0 },
+      { key: 'performance', label: 'Performance', score: Number(criteriaScores.performance || 0), maxScore: 10, weight: 1.0 },
+      { key: 'prompt_engineering', label: 'Prompt Engineering', score: Number(criteriaScores.prompt_engineering || 0), maxScore: 10, weight: 1.0 },
+      { key: 'api_security', label: 'API Security', score: Number(criteriaScores.api_security || 0), maxScore: 10, weight: 1.0 },
+      { key: 'integrity_honesty', label: 'Integrity & Honesty', score: Number(criteriaScores.integrity_honesty || 0), maxScore: 10, weight: 1.0 },
     ];
 
     return {
@@ -405,8 +411,8 @@ function generateMockLeaderboardResult(filters: LeaderboardFilters): PaginatedRe
     switch (filters.sortField) {
       case 'totalScore': va = a.totalScore; vb = b.totalScore; break;
       case 'name': va = a.name; vb = b.name; break;
-      case 'aiIntegrity': va = a.criteria.aiIntegrity; vb = b.criteria.aiIntegrity; break;
-      case 'correctness': va = a.criteria.correctness; vb = b.criteria.correctness; break;
+      case 'integrityHonesty': va = a.criteria.integrityHonesty; vb = b.criteria.integrityHonesty; break;
+      case 'completion': va = a.criteria.completion; vb = b.criteria.completion; break;
       case 'flaggedVulnerabilities': va = a.flaggedVulnerabilities; vb = b.flaggedVulnerabilities; break;
       default: va = a.totalScore; vb = b.totalScore;
     }

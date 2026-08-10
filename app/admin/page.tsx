@@ -20,7 +20,7 @@ import {
 
 export const metadata = {
   title: 'Admin Dashboard // AI Grading System',
-  description: 'System Load Telemetry and Global Leaderboard across 10 evaluation criteria.',
+  description: 'System Load Telemetry and Global Leaderboard across 13 evaluation criteria.',
 }
 
 export default async function AdminDashboardPage() {

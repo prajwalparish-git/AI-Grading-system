@@ -151,20 +151,23 @@ export function generateLeaderboardEntries(): LeaderboardEntry[] {
     const name = `${firstName} ${lastName}`
     const email = `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/'/g, '')}@${pick(DOMAINS)}`
 
-    // Bell curve: mean=80, spread=12 → most scores 65–95
-    const baseScore = gaussianScore(80, 12)
-    const correctness = gaussianScore(baseScore + 2, 4)
-    const timeComplexity = gaussianScore(baseScore, 5)
-    const memoryEfficiency = gaussianScore(baseScore - 2, 6)
-    const codeCleanliness = gaussianScore(baseScore + 1, 4)
-    const architecture = gaussianScore(baseScore, 5)
-    const edgeCases = gaussianScore(baseScore - 1, 5)
-    const unitTesting = gaussianScore(baseScore, 5)
-    const security = gaussianScore(baseScore + 2, 4)
-    const documentation = gaussianScore(baseScore - 3, 6)
-    const aiIntegrity = gaussianScore(baseScore + 5, 3) // Most people are clean
+    // Bell curve: mean=8.0, spread=1.2 → most scores 6.5–9.5
+    const baseScore = gaussianScore(8.0, 1.2) / 10
+    const completion = gaussianScore(baseScore + 0.2, 0.4)
+    const innovation = gaussianScore(baseScore, 0.5)
+    const codeLiteracy = gaussianScore(baseScore - 0.2, 0.6)
+    const gitHygiene = gaussianScore(baseScore + 0.1, 0.4)
+    const architectureStack = gaussianScore(baseScore, 0.5)
+    const functionality = gaussianScore(baseScore - 0.1, 0.5)
+    const uiUxDesign = gaussianScore(baseScore, 0.5)
+    const errorHandling = gaussianScore(baseScore + 0.2, 0.4)
+    const documentation = gaussianScore(baseScore - 0.3, 0.6)
+    const performance = gaussianScore(baseScore, 0.3)
+    const promptEngineering = gaussianScore(baseScore + 0.1, 0.4)
+    const apiSecurity = gaussianScore(baseScore + 0.2, 0.5)
+    const integrityHonesty = gaussianScore(baseScore + 0.5, 0.3) // Most people are clean
 
-    const vulns = generateVulnerabilities(baseScore)
+    const vulns = generateVulnerabilities(baseScore * 10)
     const flaggedVulnerabilities = vulns.filter(v => v.severity === 'critical' || v.severity === 'high').length
 
     // 85% graded, 8% still grading, 5% submitted, 2% error
@@ -176,16 +179,7 @@ export function generateLeaderboardEntries(): LeaderboardEntry[] {
 
     const totalScore = status === 'graded' || status === 'error'
       ? parseFloat((
-          (correctness * 0.2) +
-          (timeComplexity * 0.15) +
-          (memoryEfficiency * 0.1) +
-          (codeCleanliness * 0.1) +
-          (architecture * 0.15) +
-          (edgeCases * 0.1) +
-          (unitTesting * 0.1) +
-          (security * 0.05) +
-          (documentation * 0.03) +
-          (aiIntegrity * 0.02)
+          (completion + innovation + codeLiteracy + gitHygiene + architectureStack + functionality + uiUxDesign + errorHandling + documentation + performance + promptEngineering + apiSecurity + integrityHonesty) / 13
         ).toFixed(1))
       : 0
 
@@ -203,16 +197,19 @@ export function generateLeaderboardEntries(): LeaderboardEntry[] {
       totalScore,
       flaggedVulnerabilities,
       criteria: {
-        correctness,
-        timeComplexity,
-        memoryEfficiency,
-        codeCleanliness,
-        architecture,
-        edgeCases,
-        unitTesting,
-        security,
+        completion,
+        innovation,
+        codeLiteracy,
+        gitHygiene,
+        architectureStack,
+        functionality,
+        uiUxDesign,
+        errorHandling,
         documentation,
-        aiIntegrity,
+        performance,
+        promptEngineering,
+        apiSecurity,
+        integrityHonesty,
       },
     })
   }
@@ -486,8 +483,8 @@ export function generateSubmissionDetail(entry: LeaderboardEntry): SubmissionDet
     .replace('{quality}', QUALITIES[quality])
     .replace('{strength}', pick(STRENGTHS))
     .replace('{weakness}', pick(WEAKNESSES))
-    .replace('{integrity}', String(entry.criteria.aiIntegrity))
-    .replace('{integrityNote}', entry.criteria.aiIntegrity >= 95 ? 'no copy-paste patterns detected' : 'some overlapping token sequences flagged for review')
+    .replace('{integrity}', String(entry.criteria.integrityHonesty))
+    .replace('{integrityNote}', entry.criteria.integrityHonesty >= 9.5 ? 'no copy-paste patterns detected' : 'some overlapping token sequences flagged for review')
 
   const vulns = generateVulnerabilities(entry.totalScore)
 
@@ -513,16 +510,19 @@ export function generateSubmissionDetail(entry: LeaderboardEntry): SubmissionDet
     status: entry.status,
     aiSummary,
     criteria: [
-      { key: 'correctness', label: 'Correctness', score: entry.criteria.correctness, maxScore: 100, weight: 20 },
-      { key: 'timeComplexity', label: 'Time Complexity', score: entry.criteria.timeComplexity, maxScore: 100, weight: 15 },
-      { key: 'memoryEfficiency', label: 'Memory Efficiency', score: entry.criteria.memoryEfficiency, maxScore: 100, weight: 10 },
-      { key: 'codeCleanliness', label: 'Cleanliness', score: entry.criteria.codeCleanliness, maxScore: 100, weight: 10 },
-      { key: 'architecture', label: 'Architecture', score: entry.criteria.architecture, maxScore: 100, weight: 15 },
-      { key: 'edgeCases', label: 'Edge Cases', score: entry.criteria.edgeCases, maxScore: 100, weight: 10 },
-      { key: 'unitTesting', label: 'Unit Testing', score: entry.criteria.unitTesting, maxScore: 100, weight: 10 },
-      { key: 'security', label: 'Security', score: entry.criteria.security, maxScore: 100, weight: 5 },
-      { key: 'documentation', label: 'Documentation', score: entry.criteria.documentation, maxScore: 100, weight: 3 },
-      { key: 'aiIntegrity', label: 'AI Integrity', score: entry.criteria.aiIntegrity, maxScore: 100, weight: 2 },
+      { key: 'completion', label: 'Completion', score: entry.criteria.completion, maxScore: 10, weight: 7.7 },
+      { key: 'innovation', label: 'Innovation', score: entry.criteria.innovation, maxScore: 10, weight: 7.7 },
+      { key: 'codeLiteracy', label: 'Code Literacy', score: entry.criteria.codeLiteracy, maxScore: 10, weight: 7.7 },
+      { key: 'gitHygiene', label: 'Git Hygiene', score: entry.criteria.gitHygiene, maxScore: 10, weight: 7.7 },
+      { key: 'architectureStack', label: 'Architecture', score: entry.criteria.architectureStack, maxScore: 10, weight: 7.7 },
+      { key: 'functionality', label: 'Functionality', score: entry.criteria.functionality, maxScore: 10, weight: 7.7 },
+      { key: 'uiUxDesign', label: 'UI/UX Design', score: entry.criteria.uiUxDesign, maxScore: 10, weight: 7.7 },
+      { key: 'errorHandling', label: 'Error Handling', score: entry.criteria.errorHandling, maxScore: 10, weight: 7.7 },
+      { key: 'documentation', label: 'Documentation', score: entry.criteria.documentation, maxScore: 10, weight: 7.7 },
+      { key: 'performance', label: 'Performance', score: entry.criteria.performance, maxScore: 10, weight: 7.7 },
+      { key: 'promptEngineering', label: 'Prompt Eng', score: entry.criteria.promptEngineering, maxScore: 10, weight: 7.7 },
+      { key: 'apiSecurity', label: 'Security', score: entry.criteria.apiSecurity, maxScore: 10, weight: 7.7 },
+      { key: 'integrityHonesty', label: 'Integrity', score: entry.criteria.integrityHonesty, maxScore: 10, weight: 7.7 },
     ],
     vulnerabilities: vulns,
     codeSnippet: CODE_SNIPPETS[entry.language] || CODE_SNIPPETS['TypeScript'],

@@ -76,19 +76,24 @@ Run the unified schema script in your Supabase SQL Editor:
 # Execute db/schema.sql in the Supabase Dashboard
 ```
 
-This creates canonical tables (`applicants`, `submissions`, `evaluations`, `integrity_events`) and applies RLS policies.
+This creates canonical tables and the new admissions system tables (`roster`, `verification_codes`, `applications`, `projects`, `audit_log`), and applies RLS policies. The script includes a mock `roster` seed section at the bottom for testing.
 
 > [!IMPORTANT]
-> **Schema Re-application**: If upgrading from a previous version, re-run `db/schema.sql` in the Supabase SQL Editor so live database policies match the latest security updates (service-role only evaluations and applicant status locking).
+> **Schema Re-application**: If upgrading from a previous version, re-run `db/schema.sql` in the Supabase SQL Editor so live database policies match the latest security updates.
 
 ### 4. Admin Role Assignment
 
-To grant a user admin privileges, set `app_metadata.role = 'admin'` in Supabase:
+To grant a user admin privileges, set `app_metadata.role = 'admin'` in Supabase. For local development or testing, you can create 4 admin users in Supabase Auth and run the following in the SQL Editor:
 
 ```sql
 UPDATE auth.users
-SET raw_app_meta_data = raw_app_meta_data || '{"role": "admin"}'::jsonb
-WHERE email = 'admin@yourdomain.com';
+SET raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role": "admin"}'::jsonb
+WHERE email IN (
+  'admin1@yourdomain.com',
+  'admin2@yourdomain.com',
+  'admin3@yourdomain.com',
+  'admin4@yourdomain.com'
+);
 ```
 
 ### 5. Running the Application

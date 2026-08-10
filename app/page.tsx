@@ -5,9 +5,8 @@ export default async function Home() {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) redirect('/login')
+  if (!user) redirect('/apply')
 
-  // Check role from auth metadata — no separate users table needed
   const role = user.app_metadata?.role ?? user.user_metadata?.role
-  redirect(role === 'admin' ? '/admin' : '/submit')
+  redirect(role === 'admin' ? '/admin' : '/apply')
 }

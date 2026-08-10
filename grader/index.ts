@@ -2,10 +2,10 @@
 /**
  * Local AI grader — run with: npm run grade
  *
- * 1. Fetches all 'pending' or 'grading' submissions from Supabase.
- * 2. For each: parses repo via cloneAndParseRepo.
- * 3. Calls Groq (Meta Llama 3) via evaluateCodeWithGroq.
- * 4. Writes evaluation results back to Supabase evaluations table.
+ * 1. Fetches all 'submitted' applications and their projects from Supabase.
+ * 2. Ensures an applicant record exists.
+ * 3. For each project, clones, parses, and evaluates.
+ * 4. Writes evaluation results back to Supabase.
  */
 
 import 'dotenv/config';
@@ -17,92 +17,137 @@ async function main() {
   console.log('🎓 AI Grader starting...\n');
   const supabase = createAdminClient();
 
-  const { data: applicants, error: fetchError } = await supabase
-    .from('applicants')
-    .select('id, name, email, github_url, language, status')
-    .in('status', ['pending', 'grading']);
+  // Fetch applications with status='submitted'
+  const { data: applications, error: fetchError } = await supabase
+    .from('applications')
+    .select(`
+      id,
+      user_id,
+      roster_id,
+      status,
+      roster ( name, email ),
+      projects ( id, repo_url, fetch_status )
+    `)
+    .eq('status', 'submitted');
 
   if (fetchError) {
-    console.error('Failed to fetch applicants:', fetchError);
+    console.error('Failed to fetch applications:', fetchError);
     process.exit(1);
   }
 
-  if (!applicants || applicants.length === 0) {
-    console.log('No pending applicants to grade. Done.');
+  if (!applications || applications.length === 0) {
+    console.log('No pending applications to grade. Done.');
     return;
   }
 
-  console.log(`Found ${applicants.length} applicant(s) to grade.\n`);
+  console.log(`Found ${applications.length} application(s) to grade.\n`);
 
-  for (const app of applicants) {
-    console.log(`─── Applicant: ${app.name} (${app.github_url}) ───`);
+  for (const app of applications) {
+    const userName = (app.roster as any)?.name || 'Unknown Applicant';
+    const userEmail = (app.roster as any)?.email || '';
+    
+    console.log(`─── Applicant: ${userName} ───`);
 
     try {
-      // Mark applicant status as 'grading'
-      await supabase.from('applicants').update({ status: 'grading' }).eq('id', app.id);
+      if (!app.user_id) throw new Error('Missing user_id on application');
 
-      console.log('  Parsing repo source code...');
-      const rawCode = await cloneAndParseRepo(app.github_url);
-
-      console.log('  Auditing code with Groq AI...');
-      const evaluation = await evaluateCodeWithGroq(rawCode, app.language || 'TypeScript');
-
-      // Check for existing submission record
-      const { data: submission } = await supabase
-        .from('submissions')
+      // Ensure applicant record exists in legacy table
+      let { data: applicant } = await supabase
+        .from('applicants')
         .select('id')
-        .eq('applicant_id', app.id)
-        .order('submitted_at', { ascending: false })
-        .limit(1)
+        .eq('user_id', app.user_id)
         .maybeSingle();
 
-      let submissionId = submission?.id;
+      let applicantId = applicant?.id;
 
-      if (!submissionId) {
-        const { data: newSub, error: subErr } = await supabase
-          .from('submissions')
+      if (!applicantId) {
+        const { data: newApp, error: appErr } = await supabase
+          .from('applicants')
           .insert({
-            applicant_id: app.id,
-            repo_url: app.github_url,
-            raw_code_text: rawCode,
+            user_id: app.user_id,
+            name: userName,
+            email: userEmail,
+            github_url: 'https://github.com/unknown/unknown', // Default for legacy compatibility
+            language: 'TypeScript',
+            status: 'grading',
           })
           .select('id')
           .single();
-
-        if (subErr) throw subErr;
-        submissionId = newSub.id;
+        
+        if (appErr) throw appErr;
+        applicantId = newApp.id;
       } else {
-        // Update raw_code_text on existing submission
-        await supabase
+        await supabase.from('applicants').update({ status: 'grading' }).eq('id', applicantId);
+      }
+
+      // Grade projects
+      const projects = (app.projects as any[]) || [];
+      for (const project of projects) {
+        if (project.fetch_status === 'ok') continue;
+
+        console.log(`  Parsing repo: ${project.repo_url}`);
+        const rawCode = await cloneAndParseRepo(project.repo_url);
+
+        console.log('  Auditing code with Groq AI...');
+        const evaluation = await evaluateCodeWithGroq(rawCode, 'TypeScript');
+
+        // Check for existing submission record for this project
+        const { data: submission } = await supabase
           .from('submissions')
-          .update({ raw_code_text: rawCode })
-          .eq('id', submissionId);
+          .select('id')
+          .eq('applicant_id', applicantId)
+          .eq('repo_url', project.repo_url)
+          .maybeSingle();
+
+        let submissionId = submission?.id;
+
+        if (!submissionId) {
+          const { data: newSub, error: subErr } = await supabase
+            .from('submissions')
+            .insert({
+              applicant_id: applicantId,
+              repo_url: project.repo_url,
+              raw_code_text: rawCode,
+            })
+            .select('id')
+            .single();
+
+          if (subErr) throw subErr;
+          submissionId = newSub.id;
+        } else {
+          await supabase.from('submissions').update({ raw_code_text: rawCode }).eq('id', submissionId);
+        }
+
+        const { data: existingEval } = await supabase
+          .from('evaluations')
+          .select('id')
+          .eq('submission_id', submissionId)
+          .maybeSingle();
+
+        if (!existingEval) {
+          const { error: evalErr } = await supabase.from('evaluations').insert({
+            submission_id: submissionId,
+            overall_score: evaluation.overall_score,
+            criteria_scores: evaluation.criteria_scores as unknown as any,
+            ai_summary: evaluation.summary,
+            vulnerabilities: evaluation.vulnerabilities as unknown as any,
+          });
+
+          if (evalErr) throw evalErr;
+        }
+
+        await supabase.from('projects').update({ fetch_status: 'ok' }).eq('id', project.id);
+        console.log(`  ✓ Graded: Overall Score ${evaluation.overall_score}/10\n`);
       }
 
-      // Idempotency check: verify if evaluation already exists
-      const { data: existingEval } = await supabase
-        .from('evaluations')
-        .select('id')
-        .eq('submission_id', submissionId)
-        .maybeSingle();
-
-      if (!existingEval) {
-        const { error: evalErr } = await supabase.from('evaluations').insert({
-          submission_id: submissionId,
-          overall_score: evaluation.overall_score,
-          criteria_scores: evaluation.criteria_scores as unknown as import('../lib/database.types').Json,
-          ai_summary: evaluation.summary,
-          vulnerabilities: evaluation.vulnerabilities as unknown as import('../lib/database.types').Json,
-        });
-
-        if (evalErr) throw evalErr;
-      }
-
-      await supabase.from('applicants').update({ status: 'completed' }).eq('id', app.id);
-      console.log(`  ✓ Graded: Overall Score ${evaluation.overall_score}/100\n`);
+      await supabase.from('applicants').update({ status: 'completed' }).eq('id', applicantId);
+      await supabase.from('applications').update({ status: 'graded' }).eq('id', app.id);
     } catch (err: any) {
       console.error(`  ✗ Failed: ${err.message}\n`);
-      await supabase.from('applicants').update({ status: 'error' }).eq('id', app.id);
+      // Optionally update status to error
+      if (app.user_id) {
+         await supabase.from('applicants').update({ status: 'error' }).eq('user_id', app.user_id);
+      }
     }
   }
 }

@@ -45,16 +45,19 @@ export interface LeaderboardEntry {
   totalScore: number
   flaggedVulnerabilities: number     // count of critical+high findings
   criteria: {
-    correctness: number
-    timeComplexity: number
-    memoryEfficiency: number
-    codeCleanliness: number
-    architecture: number
-    edgeCases: number
-    unitTesting: number
-    security: number
+    completion: number
+    innovation: number
+    codeLiteracy: number
+    gitHygiene: number
+    architectureStack: number
+    functionality: number
+    uiUxDesign: number
+    errorHandling: number
     documentation: number
-    aiIntegrity: number
+    performance: number
+    promptEngineering: number
+    apiSecurity: number
+    integrityHonesty: number
   }
 }
 
@@ -82,7 +85,7 @@ export interface SubmissionDetail {
 // Query / filter / pagination types
 // ──────────────────────────────────
 
-export type SortField = 'rank' | 'totalScore' | 'name' | 'aiIntegrity' | 'correctness' | 'flaggedVulnerabilities'
+export type SortField = 'rank' | 'totalScore' | 'name' | 'integrityHonesty' | 'completion' | 'flaggedVulnerabilities'
 export type SortOrder = 'asc' | 'desc'
 
 /** Score threshold filter presets */
@@ -125,9 +128,9 @@ export const DEFAULT_FILTERS: LeaderboardFilters = {
 
 /** Human labels and score ranges for threshold presets */
 export const SCORE_THRESHOLDS: Record<ScoreThreshold, { label: string; min: number; max: number }> = {
-  all:            { label: 'All Scores',     min: 0,   max: 100 },
-  elite:          { label: 'Elite (≥ 95)',   min: 95,  max: 100 },
-  strong:         { label: 'Strong (80–94)', min: 80,  max: 94.99 },
-  average:        { label: 'Average (60–79)',min: 60,  max: 79.99 },
-  'needs-review': { label: 'Needs Review (<60)', min: 0, max: 59.99 },
+  all:            { label: 'All Scores',     min: 0,   max: 10 },
+  elite:          { label: 'Elite (≥ 9.5)',  min: 9.5, max: 10 },
+  strong:         { label: 'Strong (8–9.4)', min: 8.0, max: 9.49 },
+  average:        { label: 'Average (6–7.9)',min: 6.0, max: 7.99 },
+  'needs-review': { label: 'Needs Review (<6)', min: 0, max: 5.99 },
 }

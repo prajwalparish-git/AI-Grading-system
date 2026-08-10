@@ -14,16 +14,19 @@ export interface Vulnerability {
 }
 
 export interface CriteriaScores {
-  code_correctness: number;
-  time_complexity: number;
-  space_efficiency: number;
-  code_cleanliness: number;
-  architecture: number;
-  edge_cases: number;
-  test_suite: number;
-  security: number;
+  completion: number;
+  innovation: number;
+  code_literacy: number;
+  git_hygiene: number;
+  architecture_stack: number;
+  functionality: number;
+  ui_ux_design: number;
+  error_handling: number;
   documentation: number;
-  ai_integrity: number;
+  performance: number;
+  prompt_engineering: number;
+  api_security: number;
+  integrity_honesty: number;
 }
 
 export interface EvaluationResult {
@@ -34,35 +37,41 @@ export interface EvaluationResult {
 }
 
 const SYSTEM_PROMPT = `You are a Principal Code Auditor evaluating applicant submission code for a high-performance computer science club.
-Analyze the provided source code thoroughly across 10 specific evaluation criteria on a scale of 0 to 100:
+Analyze the provided source code thoroughly across 13 specific evaluation criteria on a scale of 0 to 10:
 
 Criteria Keys (MUST use these exact keys):
-1. code_correctness: Logic accuracy, syntax correctness, functionality.
-2. time_complexity: Algorithm efficiency, Big-O scaling, runtime performance.
-3. space_efficiency: Memory usage, resource allocation, payload footprint.
-4. code_cleanliness: Naming conventions, readability, modularity, DRY principles.
-5. architecture: System design, separation of concerns, pattern usage.
-6. edge_cases: Handling null/empty inputs, boundary conditions, error handling.
-7. test_suite: Presence, quality, and coverage of unit/integration tests.
-8. security: Resistance to vulnerabilities (e.g. injection, data leaks, hardcoded credentials).
-9. documentation: Inline comments, README quality, clear specifications.
-10. ai_integrity: Code authenticity, absence of boilerplate AI artifacts or unverified copy-pasting.
+1. completion: Extent to which the requirements were met.
+2. innovation: Creativity and uniqueness of the solution.
+3. code_literacy: Readability, naming conventions, and code cleanliness.
+4. git_hygiene: Meaningful commit messages and repository structure.
+5. architecture_stack: System design, separation of concerns, and technology choices.
+6. functionality: Core logic correctness and bug-free execution.
+7. ui_ux_design: User interface aesthetics and user experience (if applicable).
+8. error_handling: Graceful handling of edge cases and unexpected inputs.
+9. documentation: README quality, inline comments, and setup instructions.
+10. performance: Algorithm efficiency and resource usage.
+11. prompt_engineering: Effective use of AI constraints (if AI tools were allowed).
+12. api_security: Resistance to vulnerabilities and safe data handling.
+13. integrity_honesty: Absence of blatant plagiarism or unmodified boilerplate.
 
 Output Requirements:
 You MUST output ONLY a valid raw JSON object (no markdown formatting, no extra explanation) with the following shape:
 {
-  "overall_score": <number 0-100>,
+  "overall_score": <number 0-10>,
   "criteria_scores": {
-    "code_correctness": <number 0-100>,
-    "time_complexity": <number 0-100>,
-    "space_efficiency": <number 0-100>,
-    "code_cleanliness": <number 0-100>,
-    "architecture": <number 0-100>,
-    "edge_cases": <number 0-100>,
-    "test_suite": <number 0-100>,
-    "security": <number 0-100>,
-    "documentation": <number 0-100>,
-    "ai_integrity": <number 0-100>
+    "completion": <number 0-10>,
+    "innovation": <number 0-10>,
+    "code_literacy": <number 0-10>,
+    "git_hygiene": <number 0-10>,
+    "architecture_stack": <number 0-10>,
+    "functionality": <number 0-10>,
+    "ui_ux_design": <number 0-10>,
+    "error_handling": <number 0-10>,
+    "documentation": <number 0-10>,
+    "performance": <number 0-10>,
+    "prompt_engineering": <number 0-10>,
+    "api_security": <number 0-10>,
+    "integrity_honesty": <number 0-10>
   },
   "summary": "<3-5 sentence detailed summary of strengths and areas for improvement>",
   "vulnerabilities": [
@@ -94,7 +103,7 @@ async function withBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> 
 }
 
 /**
- * Evaluates raw source code text against 10 criteria using Groq (Meta Llama 3).
+ * Evaluates raw source code text against 13 criteria using Groq (Meta Llama 3).
  *
  * @param rawCodeText Flattened source code string
  * @param language Programming language of the submission
@@ -108,16 +117,19 @@ export async function evaluateCodeWithGroq(
     return {
       overall_score: 0,
       criteria_scores: {
-        code_correctness: 0,
-        time_complexity: 0,
-        space_efficiency: 0,
-        code_cleanliness: 0,
-        architecture: 0,
-        edge_cases: 0,
-        test_suite: 0,
-        security: 0,
+        completion: 0,
+        innovation: 0,
+        code_literacy: 0,
+        git_hygiene: 0,
+        architecture_stack: 0,
+        functionality: 0,
+        ui_ux_design: 0,
+        error_handling: 0,
         documentation: 0,
-        ai_integrity: 0,
+        performance: 0,
+        prompt_engineering: 0,
+        api_security: 0,
+        integrity_honesty: 0,
       },
       summary: 'No code submitted for evaluation.',
       vulnerabilities: [],
@@ -158,16 +170,19 @@ export async function evaluateCodeWithGroq(
 
   // Ensure default fallback values for safety
   const defaultCriteria: CriteriaScores = {
-    code_correctness: 70,
-    time_complexity: 70,
-    space_efficiency: 70,
-    code_cleanliness: 70,
-    architecture: 70,
-    edge_cases: 70,
-    test_suite: 70,
-    security: 70,
-    documentation: 70,
-    ai_integrity: 70,
+    completion: 7,
+    innovation: 7,
+    code_literacy: 7,
+    git_hygiene: 7,
+    architecture_stack: 7,
+    functionality: 7,
+    ui_ux_design: 7,
+    error_handling: 7,
+    documentation: 7,
+    performance: 7,
+    prompt_engineering: 7,
+    api_security: 7,
+    integrity_honesty: 7,
   };
 
   const criteriaScores: CriteriaScores = {

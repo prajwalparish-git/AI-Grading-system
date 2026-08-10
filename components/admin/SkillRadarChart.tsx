@@ -48,18 +48,18 @@ export function SkillRadarChart({ criteria, applicantName, totalScore }: SkillRa
   }))
 
   const getScoreColor = (score: number) => {
-    if (score >= 95) return 'text-emerald-400'
-    if (score >= 85) return 'text-blue-400'
-    if (score >= 70) return 'text-amber-400'
+    if (score >= 9.5) return 'text-emerald-400'
+    if (score >= 8.5) return 'text-blue-400'
+    if (score >= 7.0) return 'text-amber-400'
     return 'text-rose-400'
   }
 
   const getScoreGrade = (score: number) => {
-    if (score >= 97) return 'S+'
-    if (score >= 93) return 'S'
-    if (score >= 88) return 'A+'
-    if (score >= 82) return 'A'
-    if (score >= 75) return 'B+'
+    if (score >= 9.7) return 'S+'
+    if (score >= 9.3) return 'S'
+    if (score >= 8.8) return 'A+'
+    if (score >= 8.2) return 'A'
+    if (score >= 7.5) return 'B+'
     return 'B'
   }
 
@@ -69,14 +69,14 @@ export function SkillRadarChart({ criteria, applicantName, totalScore }: SkillRa
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
             <Crosshair className="h-4 w-4 text-blue-400" />
-            10-Skill Evaluation Radar
+            13-Skill Evaluation Radar
           </CardTitle>
           <div className="flex items-center space-x-2">
             <span className={`font-mono text-2xl font-black ${getScoreColor(totalScore)}`}>
               {totalScore.toFixed(1)}
             </span>
             <div className="flex flex-col">
-              <span className="text-[10px] text-slate-400 font-mono leading-tight">/ 100</span>
+              <span className="text-[10px] text-slate-400 font-mono leading-tight">/ 10</span>
               <Badge variant="success" className="text-[10px] font-mono px-1.5 py-0">
                 {getScoreGrade(totalScore)} Grade
               </Badge>
@@ -111,7 +111,7 @@ export function SkillRadarChart({ criteria, applicantName, totalScore }: SkillRa
               />
               <PolarRadiusAxis
                 angle={90}
-                domain={[0, 100]}
+                domain={[0, 10]}
                 tick={{ fill: '#475569', fontSize: 9 }}
                 tickCount={5}
                 axisLine={false}
@@ -136,7 +136,7 @@ export function SkillRadarChart({ criteria, applicantName, totalScore }: SkillRa
         </div>
 
         {/* Mini Score Legend Grid */}
-        <div className="grid grid-cols-5 gap-1 mt-3">
+        <div className="grid grid-cols-4 md:grid-cols-5 gap-1 mt-3">
           {criteria.map(c => (
             <div key={c.key} className="text-center p-1.5 rounded bg-slate-900/60 border border-slate-800/60">
               <div className={`font-mono font-bold text-xs ${getScoreColor(c.score)}`}>

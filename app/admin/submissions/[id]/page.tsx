@@ -194,9 +194,9 @@ export default async function SubmissionDrillDownPage({ params }: PageProps) {
 
   // ── Normal graded view ──
   const scoreColor =
-    submission.totalScore >= 95 ? 'text-emerald-400' :
-    submission.totalScore >= 85 ? 'text-blue-400' :
-    submission.totalScore >= 70 ? 'text-amber-400' : 'text-rose-400'
+    submission.totalScore >= 9.5 ? 'text-emerald-400' :
+    submission.totalScore >= 8.5 ? 'text-blue-400' :
+    submission.totalScore >= 7.0 ? 'text-amber-400' : 'text-rose-400'
 
   return (
     <div className="space-y-0">
@@ -224,7 +224,7 @@ export default async function SubmissionDrillDownPage({ params }: PageProps) {
             {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
           </Badge>
           <div className={`font-mono font-black text-sm px-3 py-1 rounded-full bg-slate-900 border border-slate-800 ${scoreColor}`}>
-            {submission.totalScore.toFixed(1)} / 100
+            {submission.totalScore.toFixed(1)} / 10
           </div>
         </div>
       </div>
