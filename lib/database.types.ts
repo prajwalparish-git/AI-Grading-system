@@ -180,7 +180,7 @@ export interface Database {
           created_at: string | null
         }
         Insert: {
-          id: string
+          id?: string
           usn: string
           code_hash: string
           expires_at: string
@@ -205,7 +205,9 @@ export interface Database {
           roster_id: string | null
           user_id: string | null
           status: string
-          problem_version: string | null
+          selection_status: string | null
+          published_questions: Json | null
+          scores_published: boolean | null
           verified_at: string | null
           submitted_at: string | null
           withdrawn_at: string | null
@@ -213,11 +215,13 @@ export interface Database {
           created_at: string | null
         }
         Insert: {
-          id: string
+          id?: string
           roster_id?: string | null
           user_id?: string | null
           status: string
-          problem_version?: string | null
+          selection_status?: string | null
+          published_questions?: Json | null
+          scores_published?: boolean | null
           verified_at?: string | null
           submitted_at?: string | null
           withdrawn_at?: string | null
@@ -229,7 +233,9 @@ export interface Database {
           roster_id?: string | null
           user_id?: string | null
           status?: string
-          problem_version?: string | null
+          selection_status?: string | null
+          published_questions?: Json | null
+          scores_published?: boolean | null
           verified_at?: string | null
           submitted_at?: string | null
           withdrawn_at?: string | null
@@ -257,7 +263,7 @@ export interface Database {
           last_checked_at: string | null
         }
         Insert: {
-          id: string
+          id?: string
           application_id?: string | null
           slot: number
           repo_url: string
@@ -295,7 +301,7 @@ export interface Database {
           created_at: string | null
         }
         Insert: {
-          id: string
+          id?: string
           application_id?: string | null
           actor_usn?: string | null
           actor_user_id?: string | null

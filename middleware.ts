@@ -17,16 +17,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = [
   '/login', 
   '/api/auth/login',
-  '/api/apply/lookup-usn',
-  '/api/apply/send-otp',
-  '/api/apply/verify-otp',
-  '/api/apply/submit-projects',
-  '/api/apply/projects',
-  '/api/apply/withdraw'
+  '/api/student/verify-usn',
+  '/api/student/verify-code'
 ]
 
 // Pages that are public but not API routes
-const PUBLIC_PAGE_PATHS = ['/apply', '/results', '/admin/login']
+const PUBLIC_PAGE_PATHS = ['/apply', '/admin/login']
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_PATHS.some((p) => pathname === p)) {
@@ -73,11 +69,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (path.startsWith('/admin')) {
-    const role = user.app_metadata?.role
+  const role = user.app_metadata?.role
 
+  if (path.startsWith('/admin')) {
     if (role !== 'admin') {
-      return NextResponse.redirect(new URL('/apply', request.url))
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+  }
+
+  if (path.startsWith('/dashboard') || path.startsWith('/results')) {
+    if (role === 'admin') {
+      return NextResponse.redirect(new URL('/admin', request.url))
     }
   }
 

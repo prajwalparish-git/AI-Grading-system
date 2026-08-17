@@ -8,5 +8,5 @@ export default async function Home() {
   if (!user) redirect('/apply')
 
   const role = user.app_metadata?.role ?? user.user_metadata?.role
-  redirect(role === 'admin' ? '/admin' : '/apply')
+  redirect(role === 'admin' ? '/admin' : '/dashboard')
 }

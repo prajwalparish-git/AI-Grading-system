@@ -155,6 +155,7 @@ create table if not exists public.roster (
     usn text unique not null,
     name text not null,
     email text not null,
+    dob date,
     batch text,
     is_active boolean default true,
     created_at timestamptz default now()
@@ -173,16 +174,19 @@ create table if not exists public.verification_codes (
 
 -- 7. Applications Table
 create table if not exists public.applications (
-    id uuid primary key,
-    roster_id uuid references public.roster(id),
-    user_id uuid references auth.users(id),
-    status text not null, -- pending_otp | verified | submitted | withdrawn | error
-    problem_version text,
-    verified_at timestamptz,
-    submitted_at timestamptz,
-    withdrawn_at timestamptz,
-    edit_deadline timestamptz,
-    created_at timestamptz default now()
+  id uuid primary key default gen_random_uuid(),
+  roster_id uuid references public.roster(id) on delete cascade not null,
+  user_id uuid references auth.users(id) on delete set null,
+  status text not null check (status in ('pending_otp', 'verified', 'submitted', 'withdrawn', 'error')),
+  selection_status text not null default 'pending' check (selection_status in ('pending', 'selected', 'rejected')),
+  published_questions jsonb not null default '[]',
+  scores_published boolean not null default false,
+  withdrawn_at timestamptz,
+  submitted_at timestamptz,
+  edit_deadline timestamptz,
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null,
+  unique(roster_id)
 );
 
 -- 8. Projects Table
@@ -258,9 +262,9 @@ create policy "Admins can view audit log"
 
 -- ─── Seed Data ─────────────────────────────────────────────────────────────
 
-insert into public.roster (usn, name, email, batch)
+insert into public.roster (usn, name, email, dob, batch)
 values 
-  ('1RV21CS001', 'Alice Smith', 'alice@example.com', '2021'),
-  ('1RV21CS002', 'Bob Jones', 'bob@example.com', '2021'),
-  ('1RV21CS003', 'Charlie Brown', 'charlie@example.com', '2021')
+  ('1RV21CS001', 'Alice Smith', 'alice@example.com', '2003-05-15', '2021'),
+  ('1RV21CS002', 'Bob Jones', 'bob@example.com', '2003-08-22', '2021'),
+  ('1RV21CS003', 'Charlie Brown', 'charlie@example.com', '2003-11-30', '2021')
 on conflict (usn) do nothing;

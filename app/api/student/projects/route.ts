@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { getApplySession } from '@/lib/apply-session'
-import { sendStudentCredentials } from '@/lib/email'
 
 function parseGithubUrl(url: string) {
   try {
@@ -34,8 +33,26 @@ async function checkGithubRepo(owner: string, repo: string) {
 
 export async function POST(request: Request) {
   try {
-    const session = await getApplySession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user || user.app_metadata?.role === 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: application } = await supabase
+      .from('applications')
+      .select('id, status, roster_id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!application) {
+      return NextResponse.json({ error: 'No application found' }, { status: 404 })
+    }
+
+    if (application.status === 'withdrawn') {
+      return NextResponse.json({ error: 'Application withdrawn' }, { status: 400 })
+    }
 
     const { urls } = await request.json()
     if (!Array.isArray(urls) || urls.length < 2 || urls.length > 3) {
@@ -57,13 +74,12 @@ export async function POST(request: Request) {
       if (!ok) failedRepos.push(r.url)
     }
 
-    const supabaseAdmin = createAdminClient()
+    const supabaseAdmin = createAdminClient() // need admin rights for audit_log and potentially bypassing RLS on projects depending on policies
 
     if (failedRepos.length > 0) {
       await supabaseAdmin.from('audit_log').insert({
         id: crypto.randomUUID(),
-        application_id: session.application_id,
-        actor_usn: session.usn,
+        application_id: application.id,
         action: 'submit_projects_failed',
         payload: { failedRepos }
       })
@@ -75,8 +91,7 @@ export async function POST(request: Request) {
 
     for (let i = 0; i < repos.length; i++) {
       await supabaseAdmin.from('projects').upsert({
-        id: crypto.randomUUID(),
-        application_id: session.application_id,
+        application_id: application.id,
         slot: i + 1,
         repo_url: repos[i].url,
         fetch_status: 'pending',
@@ -84,49 +99,25 @@ export async function POST(request: Request) {
     }
 
     const edit_deadline = new Date(Date.now() + (Number(process.env.APPLICATION_EDIT_WINDOW_HOURS) || 48) * 3600000).toISOString()
-    await supabaseAdmin.from('applications').update({
-      status: 'submitted',
-      submitted_at: new Date().toISOString(),
-      edit_deadline
-    }).eq('id', session.application_id)
-
-    const { data: roster } = await supabaseAdmin.from('roster').select('email').eq('usn', session.usn).single()
-
-    let userId: string | undefined
-    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers()
-    const userMatch = existingUser.users.find(u => u.email === roster?.email)
     
-    if (userMatch) {
-      userId = userMatch.id
-    } else {
-      const generatedPassword = crypto.randomUUID() + crypto.randomUUID().slice(0, 8) 
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: roster?.email,
-        password: generatedPassword,
-        email_confirm: true,
-      })
-      if (createError) throw createError
-      userId = newUser.user.id
-      
-      if (roster?.email) {
-        await sendStudentCredentials(roster.email, roster.email, generatedPassword)
-      }
-    }
-
-    if (userId) {
-      await supabaseAdmin.from('applications').update({ user_id: userId }).eq('id', session.application_id)
+    // Update application to submitted
+    if (application.status === 'verified' || application.status === 'pending_otp') {
+      await supabaseAdmin.from('applications').update({
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+        edit_deadline
+      }).eq('id', application.id)
     }
 
     await supabaseAdmin.from('audit_log').insert({
       id: crypto.randomUUID(),
-      application_id: session.application_id,
-      actor_usn: session.usn,
+      application_id: application.id,
       action: 'submit_projects',
     })
 
     return NextResponse.json({ success: true })
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('Submit error:', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }

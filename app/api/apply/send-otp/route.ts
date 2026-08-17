@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
-import { sendOtpEmail } from '@/lib/email'
+import { sendVerificationCode } from '@/lib/email'
 
 let ratelimit: Ratelimit | null = null
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
     if (insertError) throw insertError
 
-    await sendOtpEmail(roster.email, otp)
+    await sendVerificationCode(roster.email, otp)
     
     await supabaseAdmin.from('audit_log').insert({
       id: crypto.randomUUID(),
