@@ -1,8 +1,51 @@
 import Groq from 'groq-sdk';
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || '',
-});
+class ApiKeyRotator {
+  private keys: string[];
+  private lastUsed: Map<string, number> = new Map();
+
+  constructor() {
+    const keysStr = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || '';
+    this.keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
+    if (this.keys.length === 0) {
+      console.warn("No GROQ_API_KEYS provided. Evaluation will fail if called.");
+    }
+  }
+
+  async getClient(): Promise<Groq> {
+    if (this.keys.length === 0) throw new Error("No Groq API keys available.");
+
+    let selectedKey = this.keys[0];
+    let minWaitTime = Infinity;
+
+    for (const key of this.keys) {
+      const last = this.lastUsed.get(key) || 0;
+      const elapsed = Date.now() - last;
+      const waitNeeded = Math.max(0, 65000 - elapsed); // 65s delay per key
+
+      if (waitNeeded === 0) {
+        selectedKey = key;
+        minWaitTime = 0;
+        break;
+      }
+
+      if (waitNeeded < minWaitTime) {
+        selectedKey = key;
+        minWaitTime = waitNeeded;
+      }
+    }
+
+    if (minWaitTime > 0) {
+      console.log(`[Groq TPM Guard] All keys on cooldown. Waiting ${(minWaitTime / 1000).toFixed(1)}s before next call...`);
+      await new Promise(r => setTimeout(r, minWaitTime));
+    }
+
+    this.lastUsed.set(selectedKey, Date.now());
+    return new Groq({ apiKey: selectedKey });
+  }
+}
+
+const keyRotator = new ApiKeyRotator();
 
 export interface Vulnerability {
   id: string;
@@ -36,8 +79,12 @@ export interface EvaluationResult {
   vulnerabilities: Vulnerability[];
 }
 
+const PARTIAL_SYSTEM_PROMPT = `You are a Principal Code Auditor evaluating a chunk of a codebase for a high-performance computer science club.
+Analyze this specific chunk of code and provide a brief summary of findings related to the 13 criteria (completion, innovation, code_literacy, git_hygiene, architecture_stack, functionality, ui_ux_design, error_handling, documentation, performance, prompt_engineering, api_security, integrity_honesty). 
+Highlight any major strengths or vulnerabilities. Output ONLY plain text notes. Do not output JSON.`;
+
 const SYSTEM_PROMPT = `You are a Principal Code Auditor evaluating applicant submission code for a high-performance computer science club.
-Analyze the provided source code thoroughly across 13 specific evaluation criteria on a scale of 0 to 10:
+Based on the provided aggregated analysis notes from the codebase chunks, synthesize the findings across 13 specific evaluation criteria on a scale of 0 to 10:
 
 Criteria Keys (MUST use these exact keys):
 1. completion: Extent to which the requirements were met.
@@ -103,17 +150,17 @@ async function withBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> 
 }
 
 /**
- * Evaluates raw source code text against 13 criteria using Groq (Meta Llama 3).
+ * Evaluates chunked source code text against 13 criteria using Groq (Meta Llama 3).
  *
- * @param rawCodeText Flattened source code string
+ * @param chunks Array of codebase chunks
  * @param language Programming language of the submission
  * @returns EvaluationResult object with overall score, criteria breakdown, summary, and vulnerabilities
  */
 export async function evaluateCodeWithGroq(
-  rawCodeText: string,
+  chunks: string[],
   language: string
 ): Promise<EvaluationResult> {
-  if (!rawCodeText || !rawCodeText.trim()) {
+  if (!chunks || chunks.length === 0) {
     return {
       overall_score: 0,
       criteria_scores: {
@@ -137,15 +184,41 @@ export async function evaluateCodeWithGroq(
   }
 
   const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  let aggregatedNotes = '';
 
-  const userContent = `Language: ${language}\n\nSource Code to Audit:\n${rawCodeText.slice(0, 50000)}`;
+  // 1. Partial Analysis
+  for (let i = 0; i < chunks.length; i++) {
+    console.log(`    [Groq] Analyzing chunk ${i + 1}/${chunks.length}...`);
+    const chunk = chunks[i];
+    const userContent = `Language: ${language}\n\nChunk ${i + 1}:\n${chunk}`;
 
-  const response = await withBackoff(() =>
-    groq.chat.completions.create({
+    const groq = await keyRotator.getClient();
+    
+    const response = await withBackoff(() =>
+      groq.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: PARTIAL_SYSTEM_PROMPT },
+          { role: 'user', content: userContent },
+        ],
+        temperature: 0.2,
+        max_tokens: 2048,
+      })
+    );
+    aggregatedNotes += `\n\n--- Chunk ${i + 1} Findings ---\n${response.choices[0]?.message?.content || ''}`;
+  }
+
+  // 2. Synthesis
+  console.log('    [Groq] Synthesizing final evaluation...');
+  const synthesisUserContent = `Language: ${language}\n\nHere are the aggregated analysis notes from the codebase chunks. Synthesize these into the final JSON EvaluationResult format.\n\nAggregated Notes:\n${aggregatedNotes}`;
+
+  const groqFinal = await keyRotator.getClient();
+  const finalResponse = await withBackoff(() =>
+    groqFinal.chat.completions.create({
       model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
+        { role: 'user', content: synthesisUserContent },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.2,
@@ -153,14 +226,14 @@ export async function evaluateCodeWithGroq(
     })
   );
 
-  const rawText = response.choices[0]?.message?.content || '{}';
+  const rawText = finalResponse.choices[0]?.message?.content || '{}';
 
   // Markdown-stripping fallback parsing logic
   let parsed: any;
   try {
     let cleanText = rawText.trim();
-    if (cleanText.startsWith('```')) {
-      cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    if (cleanText.startsWith('\`\`\`')) {
+      cleanText = cleanText.replace(/^\`\`\`(?:json)?\n?/, '').replace(/\n?\`\`\`$/, '').trim();
     }
     parsed = JSON.parse(cleanText);
   } catch (parseErr) {

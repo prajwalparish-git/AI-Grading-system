@@ -8,11 +8,8 @@ const GITHUB_TOKEN = process.env.GITHUB_PAT || process.env.GITHUB_TOKEN;
 // ── Security & Token Exhaustion Limits ────────────────────────────────────
 const MAX_FILE_COUNT = 100; // Reduced to save processing time
 const MAX_FILE_SIZE_BYTES = 50_000; // 50 KB max per file
-/** 
- * STRICT TOKEN LIMIT: 28,000 bytes is roughly 7,000 tokens. 
- * This perfectly fits inside the 8,000 TPM limit of the free Groq tier.
- */
-const MAX_TOTAL_OUTPUT_BYTES = 28_000;
+const MAX_CHUNK_BYTES = 24_000; // ~6000 tokens
+const MAX_TOTAL_CHUNKS = 5; // ~30,000 tokens max per repo to prevent infinite bills
 const GIT_CLONE_TIMEOUT_MS = 30_000;
 const FETCH_TIMEOUT_MS = 30_000;
 const FILE_FETCH_TIMEOUT_MS = 10_000;
@@ -82,7 +79,7 @@ function shouldIgnoreFile(filePath: string): boolean {
   return false;
 }
 
-export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
+export async function cloneAndParseRepo(githubUrl: string): Promise<string[]> {
   try {
     const { owner, repo } = parseGitHubUrl(githubUrl);
     const headers = getHeaders();
@@ -129,15 +126,16 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
 
     codeFiles = codeFiles.slice(0, MAX_FILE_COUNT);
 
-    if (codeFiles.length === 0) return `// --- Repository: ${owner}/${repo} ---\n// No matching code files found.`;
+    if (codeFiles.length === 0) return [`// --- Repository: ${owner}/${repo} ---\n// No matching code files found.`];
 
-    // 5. Fetch raw contents and enforce strict byte limit
-    const flattenedChunks: string[] = [];
-    let totalBytes = 0;
+    // 5. Fetch raw contents and enforce strict byte limit per chunk
+    const chunks: string[] = [];
+    let currentChunk = '';
+    let currentChunkBytes = 0;
 
     for (const file of codeFiles) {
-      if (totalBytes >= MAX_TOTAL_OUTPUT_BYTES) {
-        flattenedChunks.push(`\n// --- TRUNCATED: strict token limit of ${MAX_TOTAL_OUTPUT_BYTES} bytes reached to protect AI limits ---\n`);
+      if (chunks.length >= MAX_TOTAL_CHUNKS) {
+        console.warn(`[GitHub Scraper] Reached max chunks (${MAX_TOTAL_CHUNKS}) for ${owner}/${repo}.`);
         break;
       }
 
@@ -151,16 +149,34 @@ export async function cloneAndParseRepo(githubUrl: string): Promise<string> {
           const fileContent = await rawRes.text();
           if (Buffer.byteLength(fileContent, 'utf8') > MAX_FILE_SIZE_BYTES) continue;
 
-          const chunk = `// --- File: ${file.path} ---\n${fileContent.trim()}\n`;
-          totalBytes += Buffer.byteLength(chunk, 'utf8');
-          flattenedChunks.push(chunk);
+          const chunkText = `// --- File: ${file.path} ---\n${fileContent.trim()}\n`;
+          const chunkBytes = Buffer.byteLength(chunkText, 'utf8');
+
+          if (currentChunkBytes + chunkBytes > MAX_CHUNK_BYTES && currentChunkBytes > 0) {
+            chunks.push(currentChunk);
+            currentChunk = '';
+            currentChunkBytes = 0;
+          }
+
+          if (chunks.length >= MAX_TOTAL_CHUNKS) {
+            break;
+          }
+
+          currentChunk += chunkText;
+          currentChunkBytes += chunkBytes;
         }
       } catch (fileErr) {
         console.warn(`[GitHub Scraper] Timeout fetching ${file.path}`);
       }
     }
 
-    return flattenedChunks.join('\n');
+    if (currentChunkBytes > 0 && chunks.length < MAX_TOTAL_CHUNKS) {
+      chunks.push(currentChunk);
+    }
+
+    if (chunks.length === 0) return [`// --- Repository: ${owner}/${repo} ---\n// No matching code files found.`];
+
+    return chunks;
   } catch (error) {
     console.error(`[GitHub Scraper Error] Failed to parse repository:`, error);
     throw error;

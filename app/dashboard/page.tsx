@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardClient from './DashboardClient'
 import { getApplySession } from '@/lib/apply-session'
@@ -15,9 +15,10 @@ export default async function DashboardPage() {
   if (!user && !applySession) redirect('/login')
 
   let application = null;
+  const adminClient = createAdminClient()
 
   if (applySession) {
-    const { data } = await supabase
+    const { data } = await adminClient
       .from('applications')
       .select(`
         id,
@@ -26,7 +27,7 @@ export default async function DashboardPage() {
         withdrawn_at,
         published_questions,
         edit_deadline,
-        roster:roster_id (
+        roster (
           usn,
           name,
           email
@@ -37,7 +38,7 @@ export default async function DashboardPage() {
     application = data
   } else if (user) {
     // Find the application for this user
-    const { data } = await supabase
+    const { data } = await adminClient
       .from('applications')
       .select(`
         id,
@@ -46,7 +47,7 @@ export default async function DashboardPage() {
         withdrawn_at,
         published_questions,
         edit_deadline,
-        roster:roster_id (
+        roster (
           usn,
           name,
           email
@@ -67,17 +68,18 @@ export default async function DashboardPage() {
     )
   }
 
-  // Find their projects
-  const { data: projects } = await supabase
+  // Find their projects using adminClient because OTP users are blocked by RLS on projects table
+  const { data: projects } = await adminClient
     .from('projects')
     .select('*')
     .eq('application_id', application.id)
     .order('slot', { ascending: true })
 
   // Extract name for display
-  const studentName = application.roster?.name || 'Student'
-  const studentUsn = application.roster?.usn || (applySession ? applySession.usn : '')
-  const studentEmail = application.roster?.email || ''
+  const rosterData = Array.isArray(application.roster) ? application.roster[0] : application.roster;
+  const studentName = rosterData?.name || 'Student'
+  const studentUsn = rosterData?.usn || (applySession ? applySession.usn : '')
+  const studentEmail = rosterData?.email || ''
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">

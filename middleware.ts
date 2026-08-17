@@ -65,8 +65,11 @@ export async function middleware(request: NextRequest) {
   }
 
   // Admin routes strictly require Supabase user with role admin
-  if (path.startsWith('/admin')) {
+  if (path.startsWith('/admin') || path.startsWith('/api/admin')) {
     if (!user || role !== 'admin') {
+      if (path.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Authentication required.' }, { status: 401 })
+      }
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
     return response
@@ -100,12 +103,6 @@ export async function middleware(request: NextRequest) {
         )
       }
       return NextResponse.redirect(new URL('/login', request.url))
-    }
-  }
-
-  if (path.startsWith('/dashboard') || path.startsWith('/results')) {
-    if (role === 'admin') {
-      return NextResponse.redirect(new URL('/admin', request.url))
     }
   }
 
