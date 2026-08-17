@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
+import { toast } from 'sonner'
 
 export default function DashboardClient({ application, projects }: { application: any, projects: any[] }) {
   const router = useRouter()
@@ -22,24 +23,14 @@ export default function DashboardClient({ application, projects }: { application
     return initUrls
   })
   const [submitLoading, setSubmitLoading] = useState(false)
-  const [submitMessage, setSubmitMessage] = useState('')
-  const [submitError, setSubmitError] = useState('')
-
-  // Password change state
+  
   const [newPassword, setNewPassword] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
-  const [passwordMessage, setPasswordMessage] = useState('')
-  const [passwordError, setPasswordError] = useState('')
-
-  // Withdraw state
   const [withdrawLoading, setWithdrawLoading] = useState(false)
-  const [withdrawError, setWithdrawError] = useState('')
 
   // Message dev state
   const [message, setMessage] = useState('')
   const [msgLoading, setMsgLoading] = useState(false)
-  const [msgMessage, setMsgMessage] = useState('')
-  const [msgError, setMsgError] = useState('')
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -49,8 +40,6 @@ export default function DashboardClient({ application, projects }: { application
   const handleSubmitProjects = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitLoading(true)
-    setSubmitMessage('')
-    setSubmitError('')
 
     const validUrls = urls.filter(u => u.trim() !== '')
     try {
@@ -66,10 +55,10 @@ export default function DashboardClient({ application, projects }: { application
         }
         throw new Error(data.error)
       }
-      setSubmitMessage('Projects updated successfully.')
+      toast.success('Projects updated successfully.')
       router.refresh()
     } catch (err: any) {
-      setSubmitError(err.message || 'Error occurred')
+      toast.error(err.message || 'Error occurred')
     } finally {
       setSubmitLoading(false)
     }
@@ -78,16 +67,14 @@ export default function DashboardClient({ application, projects }: { application
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setPasswordLoading(true)
-    setPasswordMessage('')
-    setPasswordError('')
     
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
-      setPasswordMessage('Password changed successfully.')
+      toast.success('Password changed successfully.')
       setNewPassword('')
     } catch (err: any) {
-      setPasswordError(err.message || 'Error occurred')
+      toast.error(err.message || 'Error occurred')
     } finally {
       setPasswordLoading(false)
     }
@@ -97,14 +84,14 @@ export default function DashboardClient({ application, projects }: { application
     if (!confirm('Are you sure you want to withdraw your application? This action cannot be undone.')) return
     
     setWithdrawLoading(true)
-    setWithdrawError('')
     try {
       const res = await fetch('/api/student/withdraw', { method: 'PATCH' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
+      toast.success('Application withdrawn successfully.')
       router.refresh()
     } catch (err: any) {
-      setWithdrawError(err.message || 'Error occurred')
+      toast.error(err.message || 'Error occurred')
       setWithdrawLoading(false)
     }
   }
@@ -112,8 +99,6 @@ export default function DashboardClient({ application, projects }: { application
   const handleMessageDev = async (e: React.FormEvent) => {
     e.preventDefault()
     setMsgLoading(true)
-    setMsgMessage('')
-    setMsgError('')
 
     try {
       const res = await fetch('/api/student/message-developer', {
@@ -123,10 +108,10 @@ export default function DashboardClient({ application, projects }: { application
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setMsgMessage('Message sent successfully. We will reply to your email.')
+      toast.success('Message sent successfully. We will reply to your email.')
       setMessage('')
     } catch (err: any) {
-      setMsgError(err.message || 'Error occurred')
+      toast.error(err.message || 'Error occurred')
     } finally {
       setMsgLoading(false)
     }
@@ -190,9 +175,6 @@ export default function DashboardClient({ application, projects }: { application
               )
             })}
             
-            {submitError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{submitError}</p>}
-            {submitMessage && <p className="text-sm text-green-700 bg-green-50 p-2 rounded">{submitMessage}</p>}
-            
             <button
               type="submit"
               disabled={submitLoading || isWithdrawn}
@@ -219,8 +201,6 @@ export default function DashboardClient({ application, projects }: { application
                   className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-600 outline-none text-sm text-slate-900"
                 />
               </div>
-              {passwordError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{passwordError}</p>}
-              {passwordMessage && <p className="text-sm text-green-700 bg-green-50 p-2 rounded">{passwordMessage}</p>}
               <button
                 type="submit"
                 disabled={passwordLoading}
@@ -246,8 +226,6 @@ export default function DashboardClient({ application, projects }: { application
                   className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-600 outline-none text-sm text-slate-900 resize-none"
                 />
               </div>
-              {msgError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{msgError}</p>}
-              {msgMessage && <p className="text-sm text-green-700 bg-green-50 p-2 rounded">{msgMessage}</p>}
               <button
                 type="submit"
                 disabled={msgLoading}
@@ -269,7 +247,6 @@ export default function DashboardClient({ application, projects }: { application
             >
               {isWithdrawn ? 'Application Withdrawn' : (withdrawLoading ? 'Processing...' : 'Withdraw Application')}
             </button>
-            {withdrawError && <p className="text-sm text-red-600 mt-2">{withdrawError}</p>}
           </div>
 
         </div>

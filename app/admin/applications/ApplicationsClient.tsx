@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 export default function ApplicationsClient({ initialData }: { initialData: any[] }) {
   const router = useRouter()
@@ -19,15 +20,15 @@ export default function ApplicationsClient({ initialData }: { initialData: any[]
       })
       const result = await res.json()
       if (res.ok) {
-        alert('Grading completed successfully!')
+        toast.success('Grading completed successfully!')
         router.refresh()
         // Optimistically update status
         setData(data.map(d => d.id === appId ? { ...d, status: 'graded' } : d))
       } else {
-        alert(`Grading failed: ${result.error}`)
+        toast.error(`Grading failed: ${result.error}`)
       }
     } catch (err: any) {
-      alert(`Error: ${err.message}`)
+      toast.error(`Error: ${err.message}`)
     } finally {
       setLoadingAppId(null)
     }

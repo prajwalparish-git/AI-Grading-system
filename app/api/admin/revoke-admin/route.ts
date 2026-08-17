@@ -22,6 +22,15 @@ export async function POST(req: Request) {
 
     const adminClient = createAdminClient()
 
+    // Ensure there is more than 1 admin before allowing revocation
+    const { data: usersData, error: listError } = await adminClient.auth.admin.listUsers()
+    if (!listError && usersData?.users) {
+      const adminCount = usersData.users.filter(u => u.app_metadata?.role === 'admin').length
+      if (adminCount <= 1) {
+        return NextResponse.json({ error: 'Cannot revoke the last administrator. The system must have at least one admin.' }, { status: 400 })
+      }
+    }
+
     // We can remove the admin role by overriding app_metadata
     // or just omitting the role. We'll set it to 'student' or null.
     const { data: targetUser, error: targetError } = await adminClient.auth.admin.getUserById(userId)

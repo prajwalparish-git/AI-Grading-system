@@ -66,12 +66,16 @@ export async function POST(req: Request) {
     // Lookup roster
     const { data: rosterData, error: rosterError } = await adminClient
       .from('roster')
-      .select('*')
+      .select('*, applications(status)')
       .eq('usn', usn)
       .single()
 
     if (rosterError || !rosterData) {
       return NextResponse.json({ error: 'Student not found in roster' }, { status: 404 })
+    }
+
+    if (rosterData.applications?.[0]?.status === 'withdrawn') {
+      return NextResponse.json({ error: 'Application has been withdrawn. You cannot proceed.' }, { status: 403 })
     }
 
     // Create auth user

@@ -42,20 +42,37 @@ export async function POST(req: Request) {
     const batchIdx = headers.indexOf('batch')
 
     const records = []
+    const seenUsns = new Set<string>()
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
     for (let i = 1; i < lines.length; i++) {
-      // Very simple split (does not handle commas inside quotes)
-      const values = lines[i].split(',').map(v => v.trim())
+      // Basic CSV split handling quotes (not perfect, but better than simple split)
+      const rowStr = lines[i]
+      if (!rowStr.trim()) continue
+      const values = rowStr.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/^"|"$/g, ''))
       
-      // Basic validation
-      if (values[usnIdx] && values[nameIdx] && values[emailIdx]) {
-        records.push({
-          usn: values[usnIdx],
-          name: values[nameIdx],
-          email: values[emailIdx],
-          dob: values[dobIdx] || null,
-          batch: values[batchIdx] || null
-        })
+      const usn = values[usnIdx]
+      const name = values[nameIdx]
+      const email = values[emailIdx]
+
+      if (!usn || !name || !email) continue
+
+      if (!emailRegex.test(email)) {
+        return NextResponse.json({ error: `Invalid email format at row ${i + 1}: ${email}` }, { status: 400 })
       }
+
+      if (seenUsns.has(usn)) {
+        return NextResponse.json({ error: `Duplicate USN found in file at row ${i + 1}: ${usn}` }, { status: 400 })
+      }
+      seenUsns.add(usn)
+
+      records.push({
+        usn,
+        name,
+        email,
+        dob: values[dobIdx] || null,
+        batch: values[batchIdx] || null
+      })
     }
 
     if (records.length === 0) {

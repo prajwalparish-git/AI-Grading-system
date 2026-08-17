@@ -81,24 +81,50 @@ This creates canonical tables and the new admissions system tables (`roster`, `v
 > [!IMPORTANT]
 > **Schema Re-application**: If upgrading from a previous version, re-run `db/schema.sql` in the Supabase SQL Editor so live database policies match the latest security updates.
 
-### 4. Admin Role Assignment
+### 4. Admin Role Assignment & Seeding
 
-To grant a user admin privileges, set `app_metadata.role = 'admin'` in Supabase. For local development or testing, you can create 4 admin users in Supabase Auth and run the following in the SQL Editor:
+The system restricts dashboard access to candidates, and control center access to administrators. 
+To grant a user admin privileges, set `app_metadata.role = 'admin'` in Supabase. You can create your first admin user manually via the Supabase Auth Dashboard, and then run the following in the SQL Editor:
 
 ```sql
 UPDATE auth.users
 SET raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role": "admin"}'::jsonb
-WHERE email IN (
-  'admin1@yourdomain.com',
-  'admin2@yourdomain.com',
-  'admin3@yourdomain.com',
-  'admin4@yourdomain.com'
-);
+WHERE email = 'your_admin_email@example.com';
 ```
 
-### 5. Running the Application
+Once the first admin is set up, they can invite other admins directly from the **Admin Control Center** > **Admins** tab.
 
-Install dependencies:
+### 5. Managing the Roster (CSV Template)
+
+Students can only apply if their USN is pre-approved in the system. As an admin, navigate to `/admin/roster` to manually add students or upload a CSV file.
+
+**CSV Format Requirements:**
+The CSV must have the exact headers: `usn, name, email, dob, batch`.
+Example:
+```csv
+usn,name,email,dob,batch
+1RV21CS001,Alice Smith,alice@example.com,2003-05-15,2021
+```
+The upload parser handles inline quotes, validates emails, and enforces USN uniqueness.
+
+### 6. The End-to-End Application Flow
+
+**Student Flow:**
+1. **Landing Page (`/`)**: Student enters their USN.
+2. **OTP Verification**: If the USN exists in the roster and is active, an OTP is emailed via Resend.
+3. **Account Creation**: Upon verifying the OTP, the system creates a Supabase Auth user, upgrades their status to `verified`, and emails a secure, auto-generated password.
+4. **Dashboard (`/dashboard`)**: Student logs in with their email and password. They can submit up to 3 GitHub repository URLs, change their password, message the developers, or withdraw their application.
+5. **Results (`/results`)**: Once admins publish the results, students can view their selection status and any follow-up questions.
+
+**Admin Flow:**
+1. **Roster**: Pre-populate valid USNs.
+2. **Applications Overview**: View all incoming applications. Admins can click **"Verify & Grade"** on any submitted application to immediately trigger the LLM grading pipeline.
+3. **Publish Results**: Admins construct dynamic questions, decide whether to reveal exact LLM scores, and mark candidates as `selected` or `rejected`. 
+4. **Audit Log**: Every significant admin action (roster upload, admin revoke, publishing results) is immutably tracked.
+
+### 7. Running the Application
+
+Install dependencies (including UI libraries like `sonner` and `lucide-react`):
 
 ```bash
 npm install
@@ -110,9 +136,9 @@ Start the local development server:
 npm run dev
 ```
 
-### 6. Executing the AI Grading Worker
+### 8. Executing the AI Grading Worker
 
-Submissions received via `/api/submit` are placed in `pending` status. Run the background worker to execute repository cloning and Groq AI code audits:
+While you can grade single applications from the Admin Control Center, you can also process all pending submissions at once using the background worker:
 
 ```bash
 npm run grade
@@ -124,6 +150,7 @@ npm run grade
 
 1. **Authentication & Authorization**:
    - `/admin/*` routes require authenticated sessions where `user.app_metadata.role === 'admin'`.
+   - Admin lock-out prevention ensures the last active admin cannot be revoked.
    - Client-supplied `user_metadata` is explicitly ignored for access control.
 2. **Server/Client Supabase Isolation**:
    - `createAdminClient` uses `SUPABASE_SERVICE_ROLE_KEY` and is restricted to server-side code (Route Handlers, worker script).
@@ -133,3 +160,5 @@ npm run grade
    - Files larger than 100 KB are skipped.
    - Total concatenated code output is capped at 2 MB.
    - Repositories are validated strictly against `https://github.com/` to prevent SSRF.
+4. **Rate Limiting**:
+   - OTP Requests fallback to Database sliding window limiting (3 attempts per hour) if Upstash Redis is unconfigured.

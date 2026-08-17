@@ -36,14 +36,39 @@ export async function POST(request: Request) {
     if (!usn) return NextResponse.json({ error: 'USN required' }, { status: 400 })
 
     const supabaseAdmin = createAdminClient()
+    
+    // Check roster status and fetch existing applications to block withdrawn
     const { data: roster, error } = await supabaseAdmin
       .from('roster')
-      .select('id, email, is_active')
+      .select('id, email, is_active, applications(status)')
       .eq('usn', usn)
       .single()
 
-    if (error || !roster || !roster.is_active) {
+    if (error || !roster) {
       return NextResponse.json({ error: 'Invalid USN' }, { status: 404 })
+    }
+
+    if (!roster.is_active) {
+      return NextResponse.json({ error: 'This USN is no longer active.' }, { status: 403 })
+    }
+
+    const appStatus = roster.applications?.[0]?.status
+    if (appStatus === 'withdrawn') {
+      return NextResponse.json({ error: 'Application has been withdrawn. You cannot re-submit.' }, { status: 403 })
+    }
+
+    // DB Rate Limiting Fallback
+    if (!ratelimit) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+      const { count } = await supabaseAdmin
+        .from('verification_codes')
+        .select('*', { count: 'exact', head: true })
+        .eq('usn', usn)
+        .gte('created_at', oneHourAgo)
+      
+      if (count !== null && count >= 3) {
+        return NextResponse.json({ error: 'Rate limit exceeded. Try again later.' }, { status: 429 })
+      }
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString()

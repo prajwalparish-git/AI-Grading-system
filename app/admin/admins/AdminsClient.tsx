@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 export default function AdminsClient({ initialAdmins }: { initialAdmins: any[] }) {
   const router = useRouter()
@@ -21,15 +22,15 @@ export default function AdminsClient({ initialAdmins }: { initialAdmins: any[] }
       })
       const result = await res.json()
       if (res.ok) {
-        alert('Admin invitation sent!')
+        toast.success('Admin invitation sent!')
         setInviteEmail('')
         router.refresh()
         // Wait for refresh to bring new data, or we can't easily add without ID
       } else {
-        alert(`Invite failed: ${result.error}`)
+        toast.error(`Invite failed: ${result.error}`)
       }
     } catch (err: any) {
-      alert(`Error: ${err.message}`)
+      toast.error(`Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -49,10 +50,10 @@ export default function AdminsClient({ initialAdmins }: { initialAdmins: any[] }
         setAdmins(admins.filter(a => a.id !== id))
         router.refresh()
       } else {
-        alert(`Revoke failed: ${result.error}`)
+        toast.error(`Revoke failed: ${result.error}`)
       }
     } catch (err: any) {
-      alert(`Error: ${err.message}`)
+      toast.error(`Error: ${err.message}`)
     } finally {
       setLoading(false)
     }

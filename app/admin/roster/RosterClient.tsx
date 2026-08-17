@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 export default function RosterClient({ initialData }: { initialData: any[] }) {
   const router = useRouter()
@@ -43,7 +44,7 @@ export default function RosterClient({ initialData }: { initialData: any[] }) {
         handleSearch(e) // reload
       } else {
         const err = await res.json()
-        alert(err.error)
+        toast.error(err.error)
       }
     } finally {
       setLoading(false)
@@ -67,7 +68,7 @@ export default function RosterClient({ initialData }: { initialData: any[] }) {
         setData(data.map(d => d.id === editId ? updated.data : d))
       } else {
         const err = await res.json()
-        alert(err.error)
+        toast.error(err.error)
       }
     } finally {
       setLoading(false)
@@ -104,11 +105,11 @@ export default function RosterClient({ initialData }: { initialData: any[] }) {
         })
         const result = await res.json()
         if (res.ok) {
-          alert(`Successfully uploaded ${result.count} records.`)
+          toast.success(`Successfully uploaded ${result.count} records.`)
           router.refresh()
           window.location.reload()
         } else {
-          alert(`Upload failed: ${result.error}`)
+          toast.error(`Upload failed: ${result.error}`)
         }
       } finally {
         setLoading(false)

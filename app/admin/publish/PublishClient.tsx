@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Check, X, Plus, Trash } from 'lucide-react'
 
 export default function PublishClient({ initialData }: { initialData: any[] }) {
@@ -58,13 +59,13 @@ export default function PublishClient({ initialData }: { initialData: any[] }) {
       })
       const result = await res.json()
       if (res.ok) {
-        alert('Results published successfully!')
+        toast.success('Results published successfully!')
         router.refresh()
       } else {
-        alert(`Failed to publish: ${result.error}`)
+        toast.error(`Failed to publish: ${result.error}`)
       }
     } catch (err: any) {
-      alert(`Error: ${err.message}`)
+      toast.error(`Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
