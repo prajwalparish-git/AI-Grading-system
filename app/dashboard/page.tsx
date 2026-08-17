@@ -77,8 +77,8 @@ export default async function DashboardPage() {
 
   // Extract name for display
   const rosterData = Array.isArray(application.roster) ? application.roster[0] : application.roster;
-  const studentName = rosterData?.name || 'Student'
-  const studentUsn = rosterData?.usn || (applySession ? applySession.usn : '')
+  const studentName = rosterData?.name || (applySession as any)?.name || 'Student'
+  const studentUsn = rosterData?.usn || (applySession ? applySession.usn : '') || ''
   const studentEmail = rosterData?.email || ''
 
   return (

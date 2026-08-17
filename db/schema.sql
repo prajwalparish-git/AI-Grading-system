@@ -177,7 +177,7 @@ create table if not exists public.applications (
   id uuid primary key default gen_random_uuid(),
   roster_id uuid references public.roster(id) on delete cascade not null,
   user_id uuid references auth.users(id) on delete set null,
-  status text not null check (status in ('pending_otp', 'verified', 'submitted', 'withdrawn', 'error')),
+  status text not null check (status in ('pending_otp', 'verified', 'submitted', 'withdrawn', 'error', 'graded')),
   selection_status text not null default 'pending' check (selection_status in ('pending', 'selected', 'rejected')),
   published_questions jsonb not null default '[]',
   scores_published boolean not null default false,

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import os from 'os'
+import fs from 'fs'
+import path from 'path'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,61 +16,50 @@ export async function GET() {
       .select('id', { count: 'exact', head: true })
       .limit(1)
 
-    // Wait, applicant status (pending, grading, completed, error) is in the applicants table. 
-    const { data: applicants, error: applicantsError } = await adminClient
-      .from('applicants')
+    // Applications by status
+    const { data: applications, error: appError } = await adminClient
+      .from('applications')
       .select('status')
 
-    let pending = 0
-    let grading = 0
-    let completed = 0
-    let errorCount = 0
-
-    if (applicants && !applicantsError) {
-      applicants.forEach(app => {
-        if (app.status === 'pending') pending++
-        if (app.status === 'grading') grading++
-        if (app.status === 'completed') completed++
-        if (app.status === 'error') errorCount++
+    const applicationsByStatus: Record<string, number> = {}
+    if (applications && !appError) {
+      applications.forEach(app => {
+        applicationsByStatus[app.status] = (applicationsByStatus[app.status] || 0) + 1
       })
     }
 
-    let lastGradedAt: string | null = null
-    const { data: evaluations } = await adminClient
-      .from('evaluations')
-      .select('evaluated_at')
-      .order('evaluated_at', { ascending: false })
-      .limit(1)
-    
-    if (evaluations && evaluations.length > 0) {
-      lastGradedAt = evaluations[0].evaluated_at
-    }
+    // Number of pending projects
+    const { count: pendingProjectsCount } = await adminClient
+      .from('projects')
+      .select('*', { count: 'exact', head: true })
+      .eq('fetch_status', 'pending')
 
-    // Next.js version
-    let nextVersion = 'Unknown'
+    // Read last grader run
+    let lastGraderRun = 'Never'
     try {
-      nextVersion = require('next/package.json').version
-    } catch(e) {}
+      const filePath = path.join(process.cwd(), '.grader-last-run')
+      if (fs.existsSync(filePath)) {
+        lastGraderRun = fs.readFileSync(filePath, 'utf-8')
+      }
+    } catch (err) {}
 
-    const memoryMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+    const mem = process.memoryUsage()
+    const memoryMb = Math.round(mem.heapUsed / 1024 / 1024)
+    const rssMb = Math.round(mem.rss / 1024 / 1024)
     const totalMemMb = Math.round(os.totalmem() / 1024 / 1024)
     
     return NextResponse.json({
       serverTime: new Date().toISOString(),
       nodeVersion: process.version,
-      nextVersion,
       memoryUsageMb: memoryMb,
+      rssMb: rssMb,
       totalMemoryMb: totalMemMb,
       cpuLoadAvg: os.loadavg(),
       dbPing: !pingError,
       groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-      queue: {
-        pending,
-        grading,
-        completed,
-        error: errorCount
-      },
-      lastGradedAt
+      applicationsByStatus,
+      pendingProjects: pendingProjectsCount || 0,
+      lastGraderRun
     })
   } catch (error: any) {
     console.error('System status error:', error)

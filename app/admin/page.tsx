@@ -1,6 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { SystemLoadMonitor } from '@/components/admin/SystemLoadMonitor'
+import { SystemStatusPanel } from '@/components/admin/SystemStatusPanel'
 import { GlobalLeaderboard } from '@/components/admin/GlobalLeaderboard'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -122,6 +123,11 @@ export default async function AdminDashboardPage() {
       {/* System Load Monitor Section */}
       <section>
         <SystemLoadMonitor />
+      </section>
+
+      {/* System Status Panel Section */}
+      <section>
+        <SystemStatusPanel />
       </section>
 
       {/* Global Leaderboard Section */}
