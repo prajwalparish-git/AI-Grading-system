@@ -23,12 +23,12 @@ import type { ProgrammingLanguage } from '@/lib/api/types';
 
 const LANGUAGES: ProgrammingLanguage[] = ['TypeScript', 'Python', 'Rust', 'Go', 'C++', 'Java'];
 
-export default function SubmitForm() {
+export default function SubmitForm({ initialName = '', initialEmail = '' }: { initialName?: string, initialEmail?: string }) {
   const router = useRouter();
 
   // State Management for inputs
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState(initialName);
+  const [email, setEmail] = useState(initialEmail);
   const [githubUrl, setGithubUrl] = useState('');
   const [language, setLanguage] = useState<ProgrammingLanguage>('TypeScript');
 

@@ -61,25 +61,28 @@ export async function POST(request: Request) {
 
     // Create or update application
     let appId: string
+    let appStatus: string = 'verified'
     const { data: existingApp } = await supabaseAdmin
       .from('applications')
-      .select('id')
+      .select('id, status')
       .eq('roster_id', roster.id)
       .single()
 
     if (existingApp) {
       appId = existingApp.id
-      await supabaseAdmin.from('applications').update({
-        status: 'verified',
-        verified_at: new Date().toISOString()
-      }).eq('id', appId)
+      appStatus = existingApp.status
+      if (appStatus === 'pending_otp' || appStatus === 'error') {
+        appStatus = 'verified'
+        await supabaseAdmin.from('applications').update({
+          status: 'verified',
+        }).eq('id', appId)
+      }
     } else {
       appId = crypto.randomUUID()
       await supabaseAdmin.from('applications').insert({
         id: appId,
         roster_id: roster.id,
         status: 'verified',
-        verified_at: new Date().toISOString()
       })
     }
 
@@ -106,7 +109,7 @@ export async function POST(request: Request) {
       action: 'verify_otp',
     })
 
-    return NextResponse.json({ success: true, application_id: appId })
+    return NextResponse.json({ success: true, application_id: appId, status: appStatus })
   } catch (err) {
     console.error('Verify OTP error:', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })

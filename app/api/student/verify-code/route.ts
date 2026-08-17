@@ -78,55 +78,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Application has been withdrawn. You cannot proceed.' }, { status: 403 })
     }
 
-    // Create auth user
-    const tempPassword = generateRandomPassword()
-    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-      email: rosterData.email,
-      password: tempPassword,
-      email_confirm: true,
-      app_metadata: { role: 'student' }
-    })
-
-    let userId: string
-    if (authError) {
-      if (authError.message.includes('User already registered') || authError.status === 422) {
-        // Find user id by email
-        const { data: existingUsers } = await adminClient.auth.admin.listUsers()
-        const userMatch = existingUsers.users.find(u => u.email === rosterData.email)
-        if (userMatch) {
-          userId = userMatch.id
-          // We can optionally update their password here, or just tell them to reset it.
-          // Since the prompt asks to email credentials, let's just generate and update it.
-          await adminClient.auth.admin.updateUserById(userId, { password: tempPassword })
-        } else {
-          return NextResponse.json({ error: 'Failed to retrieve existing user.' }, { status: 500 })
+    let appId: string
+    let appStatus: string = 'verified'
+    
+    // Check if application exists
+    if (rosterData.applications && rosterData.applications.length > 0) {
+      // It exists
+      const existingApp = await adminClient.from('applications').select('id, status').eq('roster_id', rosterData.id).single()
+      if (existingApp.data) {
+        appId = existingApp.data.id
+        appStatus = existingApp.data.status
+        if (appStatus === 'pending_otp' || appStatus === 'error') {
+          appStatus = 'verified'
+          await adminClient.from('applications').update({ status: 'verified' }).eq('id', appId)
         }
       } else {
-        console.error('Error creating auth user:', authError)
-        return NextResponse.json({ error: authError.message }, { status: 500 })
+        // Fallback
+        appId = crypto.randomUUID()
+        await adminClient.from('applications').insert({ id: appId, roster_id: rosterData.id, status: 'verified' })
       }
     } else {
-      userId = authData.user.id
+      appId = crypto.randomUUID()
+      await adminClient.from('applications').insert({ id: appId, roster_id: rosterData.id, status: 'verified' })
     }
 
-    // Create or update application
-    const { error: appError } = await adminClient
-      .from('applications')
-      .upsert({
-        roster_id: rosterData.id,
-        user_id: userId,
-        status: 'verified'
-      }, { onConflict: 'roster_id' })
+    // Create apply_session
+    const jose = await import('jose')
+    const JWT_SECRET = new TextEncoder().encode(process.env.OTP_PEPPER || 'default-secret-fallback')
+    const jwt = await new jose.SignJWT({ usn, application_id: appId })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('24h') // Give them 24 hours
+      .sign(JWT_SECRET)
 
-    if (appError) {
-      console.error('Error creating application:', appError)
-      return NextResponse.json({ error: 'Failed to create application' }, { status: 500 })
-    }
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    cookieStore.set('apply_session', jwt, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 86400, // 24 hours
+    })
 
-    // Email credentials
-    await sendStudentCredentials(rosterData.email, rosterData.email, tempPassword)
-
-    return NextResponse.json({ success: true, message: 'Verification successful. Credentials sent.' })
+    return NextResponse.json({ success: true, application_id: appId, status: appStatus })
   } catch (error: any) {
     console.error('Error in POST /api/student/verify-code:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

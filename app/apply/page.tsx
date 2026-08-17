@@ -43,10 +43,20 @@ export default function ApplyPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setStep(3)
+      
+      // Clear any existing admin Supabase session
+      const { createBrowserClient } = await import('@supabase/ssr')
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      await supabase.auth.signOut()
+
+      // Redirect straight to dashboard
+      router.push('/dashboard')
+      router.refresh()
     } catch (err: any) {
       setError(err.message || 'Error occurred')
-    } finally {
       setLoading(false)
     }
   }
@@ -58,8 +68,8 @@ export default function ApplyPage() {
         {step === 1 && (
           <form onSubmit={handleLookup} className="space-y-6">
             <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Apply for Coding Club</h1>
-              <p className="mt-2 text-sm text-slate-500">Enter your USN to begin the verification process.</p>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Student Portal Login / Apply</h1>
+              <p className="mt-2 text-sm text-slate-500">Enter your USN below to apply or log in to your existing application.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">University Seat Number</label>
@@ -109,27 +119,6 @@ export default function ApplyPage() {
               {loading ? 'Verifying...' : 'Verify OTP'}
             </button>
           </form>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-6">
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Identity Verified</h1>
-              <p className="mt-2 text-sm text-slate-500">Your application record has been created.</p>
-            </div>
-            
-            <div className="bg-green-50 text-green-800 p-6 rounded-md border border-green-200 text-center">
-              <h3 className="font-bold mb-2">Check Your Email</h3>
-              <p className="text-sm">We have emailed you your login credentials. Use them to log in and submit your GitHub repositories before the deadline.</p>
-            </div>
-            
-            <button
-              onClick={() => router.push('/login')}
-              className="w-full bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700"
-            >
-              Go to Login
-            </button>
-          </div>
         )}
 
       </div>

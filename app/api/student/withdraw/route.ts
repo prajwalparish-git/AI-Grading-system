@@ -1,20 +1,33 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getApplySession } from '@/lib/apply-session'
 
 export async function PATCH(request: Request) {
   try {
     const supabase = await createServerClient()
     const { data: { user } } = await supabase.auth.getUser()
+    const applySession = await getApplySession()
 
-    if (!user || user.app_metadata?.role === 'admin') {
+    if ((!user && !applySession) || user?.app_metadata?.role === 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: application } = await supabase
-      .from('applications')
-      .select('id, status')
-      .eq('user_id', user.id)
-      .single()
+    let application = null;
+    if (applySession) {
+      const { data } = await supabase
+        .from('applications')
+        .select('id, status')
+        .eq('id', applySession.application_id)
+        .single()
+      application = data
+    } else if (user) {
+      const { data } = await supabase
+        .from('applications')
+        .select('id, status')
+        .eq('user_id', user.id)
+        .single()
+      application = data
+    }
 
     if (!application) {
       return NextResponse.json({ error: 'No application found' }, { status: 404 })

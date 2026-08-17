@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { sendMessageToDeveloper } from '@/lib/email'
+import { getApplySession } from '@/lib/apply-session'
 
 export async function POST(req: Request) {
   try {
     const supabase = await createServerClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
+    const applySession = await getApplySession()
 
-    if (authError || !user) {
+    if (!user && !applySession) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -21,13 +23,24 @@ export async function POST(req: Request) {
     const adminClient = createAdminClient()
     
     // We need to get the user's USN from their application or roster
-    const { data: application, error: appError } = await adminClient
-      .from('applications')
-      .select('roster_id')
-      .eq('user_id', user.id)
-      .single()
+    let application = null;
+    if (applySession) {
+      const { data } = await adminClient
+        .from('applications')
+        .select('roster_id')
+        .eq('id', applySession.application_id)
+        .single()
+      application = data
+    } else if (user) {
+      const { data } = await adminClient
+        .from('applications')
+        .select('roster_id')
+        .eq('user_id', user.id)
+        .single()
+      application = data
+    }
       
-    if (appError || !application) {
+    if (!application) {
        return NextResponse.json({ error: 'Student application not found' }, { status: 404 })
     }
     

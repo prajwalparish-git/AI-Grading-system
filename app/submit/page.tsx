@@ -1,13 +1,52 @@
 import React from 'react';
 import SubmitForm from './SubmitForm';
 import { Cpu, Terminal } from 'lucide-react';
+import { getApplySession } from '@/lib/apply-session';
+import { createServerClient } from '@/lib/supabase/server';
 
 export const metadata = {
   title: 'Submit Project — AI Grading System',
   description: 'Submit your coding project repository for automated AI evaluation and multi-criteria scoring.',
 };
 
-export default function SubmitPage() {
+export default async function SubmitPage() {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const applySession = await getApplySession();
+
+  let application = null;
+
+  if (applySession) {
+    const { data } = await supabase
+      .from('applications')
+      .select(`
+        id,
+        roster:roster_id (
+          name,
+          email
+        )
+      `)
+      .eq('id', applySession.application_id)
+      .single();
+    application = data;
+  } else if (user) {
+    const { data } = await supabase
+      .from('applications')
+      .select(`
+        id,
+        roster:roster_id (
+          name,
+          email
+        )
+      `)
+      .eq('user_id', user.id)
+      .single();
+    application = data;
+  }
+
+  const initialName = application?.roster?.name || '';
+  const initialEmail = application?.roster?.email || '';
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 py-12 px-4 flex flex-col justify-center items-center relative overflow-hidden">
       {/* Background glow effects */}
@@ -30,7 +69,7 @@ export default function SubmitPage() {
         </div>
 
         {/* Client Submission Form */}
-        <SubmitForm />
+        <SubmitForm initialName={initialName} initialEmail={initialEmail} />
       </div>
     </main>
   );

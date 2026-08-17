@@ -1,17 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import * as jose from 'jose'
 
-/**
- * Route protection middleware.
- *
- * Public routes (no auth required):
- *   /login, /api/auth/login, /submit (page only), /results, /results/*
- *
- * Protected routes:
- *   /api/*       — require a valid authenticated session (except whitelisted /api/auth/login)
- *   /admin/*     — require authenticated session AND admin role
- *   All other routes — require a valid authenticated session
- */
+const JWT_SECRET = new TextEncoder().encode(process.env.OTP_PEPPER || 'default-secret-fallback')
 
 // Routes that are fully public (no session required)
 const PUBLIC_PATHS = [
@@ -57,23 +48,58 @@ export async function middleware(request: NextRequest) {
 
   if (isPublicRoute(path)) return response
 
+  // Check Supabase session
   const { data: { user } } = await supabase.auth.getUser()
+  const role = user?.app_metadata?.role
 
-  if (!user) {
-    if (path.startsWith('/api/')) {
-      return NextResponse.json(
-        { error: 'Authentication required.' },
-        { status: 401 }
-      )
+  // Check custom apply_session
+  let applySession = null
+  const applyCookie = request.cookies.get('apply_session')?.value
+  if (applyCookie) {
+    try {
+      const { payload } = await jose.jwtVerify(applyCookie, JWT_SECRET)
+      applySession = payload
+    } catch (err) {
+      applySession = null
     }
-    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  const role = user.app_metadata?.role
-
+  // Admin routes strictly require Supabase user with role admin
   if (path.startsWith('/admin')) {
-    if (role !== 'admin') {
+    if (!user || role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+    return response
+  }
+
+  // Student routes that accept either
+  const isStudentRoute = 
+    path.startsWith('/dashboard') || 
+    path.startsWith('/submit') || 
+    path.startsWith('/results') || 
+    path.startsWith('/api/apply') || 
+    path.startsWith('/api/student')
+
+  if (isStudentRoute) {
+    if (!user && !applySession) {
+      if (path.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'Authentication required.' },
+          { status: 401 }
+        )
+      }
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+  } else {
+    // Other unknown protected routes fallback to basic check
+    if (!user && !applySession) {
+      if (path.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'Authentication required.' },
+          { status: 401 }
+        )
+      }
+      return NextResponse.redirect(new URL('/login', request.url))
     }
   }
 

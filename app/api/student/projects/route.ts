@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getApplySession } from '@/lib/apply-session'
 
 function parseGithubUrl(url: string) {
   try {
@@ -35,16 +36,28 @@ export async function POST(request: Request) {
   try {
     const supabase = await createServerClient()
     const { data: { user } } = await supabase.auth.getUser()
+    const applySession = await getApplySession()
 
-    if (!user || user.app_metadata?.role === 'admin') {
+    if ((!user && !applySession) || user?.app_metadata?.role === 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: application } = await supabase
-      .from('applications')
-      .select('id, status, roster_id')
-      .eq('user_id', user.id)
-      .single()
+    let application = null;
+    if (applySession) {
+      const { data } = await supabase
+        .from('applications')
+        .select('id, status, roster_id, edit_deadline')
+        .eq('id', applySession.application_id)
+        .single()
+      application = data
+    } else if (user) {
+      const { data } = await supabase
+        .from('applications')
+        .select('id, status, roster_id, edit_deadline')
+        .eq('user_id', user.id)
+        .single()
+      application = data
+    }
 
     if (!application) {
       return NextResponse.json({ error: 'No application found' }, { status: 404 })
@@ -52,6 +65,10 @@ export async function POST(request: Request) {
 
     if (application.status === 'withdrawn') {
       return NextResponse.json({ error: 'Application withdrawn' }, { status: 400 })
+    }
+
+    if (application.edit_deadline && new Date() > new Date(application.edit_deadline)) {
+      return NextResponse.json({ error: 'The 48-hour edit window has expired.' }, { status: 403 })
     }
 
     const { urls } = await request.json()
