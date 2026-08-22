@@ -8,8 +8,8 @@
  * 4. Writes evaluation results back to Supabase.
  * 5. Updates status tracking and logs timestamp to .grader-last-run
  */
-
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 import fs from 'fs';
 import path from 'path';
 import { createAdminClient } from '../lib/supabase/server';
@@ -67,22 +67,22 @@ async function main() {
     const applicant = applicants?.find(a => a.user_id === app.user_id);
     const rosterData = Array.isArray(app.roster) ? app.roster[0] : app.roster;
     const userName = rosterData?.name || applicant?.name || 'Unknown Applicant';
-    
+
     console.log(`─── Applicant: ${userName} ───`);
 
     try {
       if (!applicant) throw new Error('Missing old applicant record for user');
       const applicantId = applicant.id;
-      
+
       const projects = (app.projects as any[]) || [];
       const pendingAppProjects = projects.filter(p => p.fetch_status === 'pending');
-      
+
       let allPassed = true;
       let failedRepos: string[] = [];
 
       for (const project of pendingAppProjects) {
         console.log(`  Parsing repo: ${project.repo_url}`);
-        
+
         try {
           const chunks = await cloneAndParseRepo(project.repo_url);
           console.log(`  Auditing code with Groq AI (${chunks.length} chunks)...`);
