@@ -51,7 +51,6 @@ export async function POST(req: Request) {
     }
 
     await adminClient.from('audit_log').insert({
-      id: crypto.randomUUID(),
       actor_user_id: user.id,
       action: 'revoke_admin',
       payload: { revoked_user_id: userId, revoked_email: targetUser.user.email || null }

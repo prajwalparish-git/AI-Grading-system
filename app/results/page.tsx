@@ -107,7 +107,7 @@ export default async function ResultsPage() {
               <p className="text-slate-500 text-sm">Admins have chosen to publish your evaluation score.</p>
             </div>
             <div className="text-3xl font-bold text-blue-600">
-              {scoreData} / 100
+              {scoreData} / 10
             </div>
           </div>
         )}

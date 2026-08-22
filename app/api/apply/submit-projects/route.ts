@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getApplySession } from '@/lib/apply-session'
-import { sendStudentCredentials } from '@/lib/email'
 
 function parseGithubUrl(url: string) {
   try {
@@ -61,7 +60,6 @@ export async function POST(request: Request) {
 
     if (failedRepos.length > 0) {
       await supabaseAdmin.from('audit_log').insert({
-        id: crypto.randomUUID(),
         application_id: session.application_id,
         actor_usn: session.usn,
         action: 'submit_projects_failed',
@@ -90,35 +88,9 @@ export async function POST(request: Request) {
       edit_deadline
     }).eq('id', session.application_id)
 
-    const { data: roster } = await supabaseAdmin.from('roster').select('email').eq('usn', session.usn).single()
 
-    let userId: string | undefined
-    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers()
-    const userMatch = existingUser.users.find(u => u.email === roster?.email)
-    
-    if (userMatch) {
-      userId = userMatch.id
-    } else {
-      const generatedPassword = crypto.randomUUID() + crypto.randomUUID().slice(0, 8) 
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: roster?.email,
-        password: generatedPassword,
-        email_confirm: true,
-      })
-      if (createError) throw createError
-      userId = newUser.user.id
-      
-      if (roster?.email) {
-        await sendStudentCredentials(roster.email, roster.email, generatedPassword)
-      }
-    }
-
-    if (userId) {
-      await supabaseAdmin.from('applications').update({ user_id: userId }).eq('id', session.application_id)
-    }
 
     await supabaseAdmin.from('audit_log').insert({
-      id: crypto.randomUUID(),
       application_id: session.application_id,
       actor_usn: session.usn,
       action: 'submit_projects',

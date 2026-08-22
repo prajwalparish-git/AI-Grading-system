@@ -65,13 +65,13 @@ export default async function GradesPage() {
                       <div className="w-20 h-1.5 bg-gray-100 rounded-full">
                         <div
                           className="h-1.5 rounded-full bg-indigo-500"
-                          style={{ width: `${row.overallScore}%` }}
+                          style={{ width: `${(row.overallScore / 10) * 100}%` }}
                         />
                       </div>
-                      <span className="font-semibold text-gray-700">{row.overallScore}%</span>
+                      <span className="font-semibold text-gray-700">{row.overallScore.toFixed(1)} / 10</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{row.overallScore.toFixed(1)} / 100</td>
+                  <td className="px-4 py-3 text-gray-500">{(row.overallScore / 10 * 100).toFixed(0)}%</td>
                   <td className="px-4 py-3">
                     <Link href={`/admin/grades/${row.id}`} className="text-indigo-600 hover:underline text-xs">
                       Full breakdown

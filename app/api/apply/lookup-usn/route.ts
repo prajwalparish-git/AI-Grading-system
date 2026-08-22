@@ -1,26 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
+import { createRatelimit } from '@/lib/ratelimit'
 
-// Initialize Upstash Redis ratelimit (fallback to mock if not configured)
-let ratelimit: Ratelimit | null = null
-if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-  ratelimit = new Ratelimit({
-    redis: Redis.fromEnv(),
-    limiter: Ratelimit.slidingWindow(5, '15 m'),
-    analytics: true,
-  })
-}
+const lookupUsnRatelimit = createRatelimit('lookup_usn', 5, '15 m', 15)
 
 export async function POST(request: Request) {
   try {
     const ip = request.headers.get('x-forwarded-for') ?? '127.0.0.1'
-    if (ratelimit) {
-      const { success } = await ratelimit.limit(`lookup_usn_${ip}`)
-      if (!success) {
-        return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
-      }
+    const { success } = await lookupUsnRatelimit.limit(ip)
+    if (!success) {
+      return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
     }
 
     const { usn } = await request.json()

@@ -78,7 +78,6 @@ export async function PATCH(request: Request) {
 
     if (failedRepos.length > 0) {
       await supabaseAdmin.from('audit_log').insert({
-        id: crypto.randomUUID(),
         application_id: session.application_id,
         actor_usn: session.usn,
         action: 'edit_projects_failed',
@@ -103,7 +102,6 @@ export async function PATCH(request: Request) {
     }
 
     await supabaseAdmin.from('audit_log').insert({
-      id: crypto.randomUUID(),
       application_id: session.application_id,
       actor_usn: session.usn,
       action: 'edit_repo',

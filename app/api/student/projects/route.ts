@@ -95,7 +95,6 @@ export async function POST(request: Request) {
 
     if (failedRepos.length > 0) {
       await supabaseAdmin.from('audit_log').insert({
-        id: crypto.randomUUID(),
         application_id: application.id,
         action: 'submit_projects_failed',
         payload: { failedRepos }
@@ -108,6 +107,7 @@ export async function POST(request: Request) {
 
     for (let i = 0; i < repos.length; i++) {
       await supabaseAdmin.from('projects').upsert({
+        id: crypto.randomUUID(),
         application_id: application.id,
         slot: i + 1,
         repo_url: repos[i].url,
@@ -127,7 +127,6 @@ export async function POST(request: Request) {
     }
 
     await supabaseAdmin.from('audit_log').insert({
-      id: crypto.randomUUID(),
       application_id: application.id,
       action: 'submit_projects',
     })

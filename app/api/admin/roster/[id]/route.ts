@@ -29,7 +29,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     // Audit log
     await adminClient.from('audit_log').insert({
-      id: crypto.randomUUID(),
       actor_user_id: user.id,
       action: 'roster_updated',
       payload: { roster_id: id, updates: body }
@@ -70,7 +69,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     // Audit log
     await adminClient.from('audit_log').insert({
-      id: crypto.randomUUID(),
       actor_user_id: user.id,
       action: 'roster_deleted',
       payload: { roster_id: id }

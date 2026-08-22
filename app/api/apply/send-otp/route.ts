@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
-import { sendVerificationCode } from '@/lib/email'
+import { createRatelimit } from '@/lib/ratelimit'
 
-let ratelimit: Ratelimit | null = null
-if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-  ratelimit = new Ratelimit({
-    redis: Redis.fromEnv(),
-    limiter: Ratelimit.slidingWindow(3, '15 m'),
-    analytics: true,
-  })
-}
+const sendOtpRatelimit = createRatelimit('send_otp', 3, '15 m', 15)
 
 export async function hashOtp(otp: string): Promise<string> {
   const pepper = process.env.OTP_PEPPER || 'default-pepper'
@@ -25,11 +16,9 @@ export async function hashOtp(otp: string): Promise<string> {
 export async function POST(request: Request) {
   try {
     const ip = request.headers.get('x-forwarded-for') ?? '127.0.0.1'
-    if (ratelimit) {
-      const { success } = await ratelimit.limit(`send_otp_${ip}`)
-      if (!success) {
-        return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
-      }
+    const { success } = await sendOtpRatelimit.limit(ip)
+    if (!success) {
+      return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
     }
 
     const { usn } = await request.json()
@@ -57,19 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Application has been withdrawn. You cannot re-submit.' }, { status: 403 })
     }
 
-    // DB Rate Limiting Fallback
-    if (!ratelimit) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-      const { count } = await supabaseAdmin
-        .from('verification_codes')
-        .select('*', { count: 'exact', head: true })
-        .eq('usn', usn)
-        .gte('created_at', oneHourAgo)
-      
-      if (count !== null && count >= 3) {
-        return NextResponse.json({ error: 'Rate limit exceeded. Try again later.' }, { status: 429 })
-      }
-    }
+
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString()
     const code_hash = await hashOtp(otp)
@@ -85,7 +62,6 @@ export async function POST(request: Request) {
     await sendVerificationCode(roster.email, otp)
     
     await supabaseAdmin.from('audit_log').insert({
-      id: crypto.randomUUID(),
       actor_usn: usn,
       action: 'send_otp',
     })

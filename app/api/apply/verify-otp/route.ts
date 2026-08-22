@@ -1,29 +1,20 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
+import { createRatelimit } from '@/lib/ratelimit'
 import { hashOtp } from '../send-otp/route'
 import * as jose from 'jose'
 import { cookies } from 'next/headers'
+import { sendStudentCredentials } from '@/lib/email'
 
-let ratelimit: Ratelimit | null = null
-if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-  ratelimit = new Ratelimit({
-    redis: Redis.fromEnv(),
-    limiter: Ratelimit.slidingWindow(5, '15 m'),
-    analytics: true,
-  })
-}
+const verifyOtpRatelimit = createRatelimit('verify_otp', 5, '15 m', 15)
 
 const JWT_SECRET = new TextEncoder().encode(process.env.OTP_PEPPER || 'default-secret-fallback')
 
 export async function POST(request: Request) {
   try {
     const ip = request.headers.get('x-forwarded-for') ?? '127.0.0.1'
-    if (ratelimit) {
-      const { success } = await ratelimit.limit(`verify_otp_${ip}`)
-      if (!success) return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
-    }
+    const { success } = await verifyOtpRatelimit.limit(ip)
+    if (!success) return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
 
     const { usn, otp } = await request.json()
     if (!usn || !otp) return NextResponse.json({ error: 'USN and OTP required' }, { status: 400 })
@@ -55,8 +46,8 @@ export async function POST(request: Request) {
       .update({ used_at: new Date().toISOString() })
       .eq('id', code.id)
 
-    // Get roster ID
-    const { data: roster } = await supabaseAdmin.from('roster').select('id').eq('usn', usn).single()
+    // Get roster ID and email
+    const { data: roster } = await supabaseAdmin.from('roster').select('id, email').eq('usn', usn).single()
     if (!roster) return NextResponse.json({ error: 'Roster error' }, { status: 500 })
 
     // Create or update application
@@ -86,6 +77,32 @@ export async function POST(request: Request) {
       })
     }
 
+    // Create Supabase user if missing, email password, and link application
+    let userId: string | undefined
+    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers()
+    const userMatch = existingUser.users.find(u => u.email === roster.email)
+    
+    if (userMatch) {
+      userId = userMatch.id
+    } else {
+      const generatedPassword = crypto.randomUUID() + crypto.randomUUID().slice(0, 8) 
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: roster.email,
+        password: generatedPassword,
+        email_confirm: true,
+      })
+      if (createError) throw createError
+      userId = newUser.user.id
+      
+      if (roster.email) {
+        await sendStudentCredentials(roster.email, roster.email, generatedPassword)
+      }
+    }
+
+    if (userId) {
+      await supabaseAdmin.from('applications').update({ user_id: userId }).eq('id', appId)
+    }
+
     // Create secure session
     const jwt = await new jose.SignJWT({ usn, application_id: appId })
       .setProtectedHeader({ alg: 'HS256' })
@@ -103,7 +120,6 @@ export async function POST(request: Request) {
     })
 
     await supabaseAdmin.from('audit_log').insert({
-      id: crypto.randomUUID(),
       application_id: appId,
       actor_usn: usn,
       action: 'verify_otp',

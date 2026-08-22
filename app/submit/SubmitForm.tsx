@@ -149,7 +149,7 @@ export default function SubmitForm({ initialName = '', initialEmail = '' }: { in
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-mono text-slate-400">Overall AI Score</span>
                   <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-mono text-sm px-3 py-1 font-bold">
-                    {successResult.evaluation?.overall_score} / 100
+                    {successResult.evaluation?.overall_score} / 10
                   </Badge>
                 </div>
                 <div className="border-t border-slate-800/80 pt-3">

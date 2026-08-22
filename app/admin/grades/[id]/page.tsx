@@ -39,7 +39,7 @@ export default async function GradeDetailPage({ params }: Props) {
   const criteria: CriterionEntry[] = Object.entries(rawCriteria).map(([key, score]) => ({
     name: key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
     score: Number(score),
-    max: 100,
+    max: 10,
   }))
 
   const overallScore = evaluation?.overall_score != null ? Number(evaluation.overall_score) : 0
@@ -58,10 +58,10 @@ export default async function GradeDetailPage({ params }: Props) {
         {/* Score card */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 mb-6 flex gap-6 items-center">
           <div className="text-5xl font-bold text-indigo-600">
-            {Math.round(overallScore)}%
+            {overallScore.toFixed(1)} / 10
           </div>
           <div>
-            <p className="text-lg font-semibold text-gray-800">{overallScore.toFixed(1)} / 100 pts</p>
+            <p className="text-lg font-semibold text-gray-800">{(overallScore / 10 * 100).toFixed(0)}%</p>
             <a href={submission.repo_url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 text-sm hover:underline">
               View repository →
             </a>

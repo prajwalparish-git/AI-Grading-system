@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { gradeOneApplication } from '@/grader/gradeOne'
 
 export async function POST(req: Request) {
   try {
@@ -17,17 +18,10 @@ export async function POST(req: Request) {
 
     const adminClient = createAdminClient()
 
-    // 1. Fetch Application
+    // Verify application exists and is in a gradable state
     const { data: app, error: fetchError } = await adminClient
       .from('applications')
-      .select(`
-        id,
-        user_id,
-        roster_id,
-        status,
-        roster ( name, email ),
-        projects ( id, repo_url, fetch_status )
-      `)
+      .select('id, status')
       .eq('id', applicationId)
       .single()
 
@@ -35,57 +29,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Application not found' }, { status: 404 })
     }
 
-    if (app.status !== 'submitted') {
-      return NextResponse.json({ error: 'Application is not in submitted state' }, { status: 400 })
+    if (app.status !== 'submitted' && app.status !== 'error') {
+      return NextResponse.json(
+        { error: `Application is in '${app.status}' state — only 'submitted' or 'error' can be graded` },
+        { status: 400 },
+      )
     }
 
-    const userName = (app.roster as any)?.name || 'Unknown Applicant'
-    const userEmail = (app.roster as any)?.email || ''
-    
-    if (!app.user_id) {
-       return NextResponse.json({ error: 'Application missing user_id' }, { status: 400 })
-    }
+    // Reset all projects to 'pending' so they get re-graded
+    await adminClient
+      .from('projects')
+      .update({ fetch_status: 'pending', fetch_error: null })
+      .eq('application_id', applicationId)
 
-    // Ensure legacy applicant record exists and set status to 'grading'
-    let { data: applicant } = await adminClient
-      .from('applicants')
-      .select('id')
-      .eq('user_id', app.user_id)
-      .maybeSingle()
-
-    if (!applicant?.id) {
-      const { error: appErr } = await adminClient
-        .from('applicants')
-        .insert({
-          user_id: app.user_id,
-          name: userName,
-          email: userEmail,
-          github_url: 'https://github.com/unknown/unknown',
-          language: 'TypeScript',
-          status: 'grading',
-        })
-      
-      if (appErr) throw appErr
-    } else {
-      await adminClient.from('applicants').update({ status: 'grading' }).eq('id', applicant.id)
-    }
-
-    const projects = (app.projects as any[]) || []
-    
-    // Set projects fetch_status to 'pending' to ensure the worker picks them up
-    for (const project of projects) {
-      await adminClient.from('projects').update({ fetch_status: 'pending' }).eq('id', project.id)
-    }
-
-    // Audit log
+    // Audit log (relies on DB default for id)
     await adminClient.from('audit_log').insert({
-      id: crypto.randomUUID(),
       actor_user_id: user.id,
       application_id: app.id,
-      action: 'queue_grade_application',
+      action: 'grade_application_started',
     })
 
-    return NextResponse.json({ success: true, message: 'Grading queued' })
+    // Run grading synchronously
+    const result = await gradeOneApplication(adminClient, applicationId)
+
+    // Audit log for completion
+    await adminClient.from('audit_log').insert({
+      actor_user_id: user.id,
+      application_id: app.id,
+      action: 'grade_application_completed',
+      payload: {
+        status: result.status,
+        graded: result.gradedProjects,
+        failed: result.failedProjects,
+        scores: result.scores,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: result.status === 'graded'
+        ? `Grading complete — ${result.gradedProjects} project(s) graded`
+        : `Grading finished with errors — ${result.failedProjects.length} project(s) failed`,
+      ...result,
+    })
   } catch (error: any) {
     console.error('Error in POST /api/admin/grade-application:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

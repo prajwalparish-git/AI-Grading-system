@@ -54,7 +54,6 @@ export async function PATCH(request: Request) {
     }
 
     await adminClient.from('audit_log').insert({
-      id: crypto.randomUUID(),
       application_id: application.id,
       action: 'withdraw_application',
     })

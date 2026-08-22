@@ -163,7 +163,7 @@ create table if not exists public.roster (
 
 -- 6. Verification Codes Table
 create table if not exists public.verification_codes (
-    id uuid primary key,
+    id uuid primary key default gen_random_uuid(),
     usn text not null,
     code_hash text not null,
     expires_at timestamptz not null,
@@ -191,7 +191,7 @@ create table if not exists public.applications (
 
 -- 8. Projects Table
 create table if not exists public.projects (
-    id uuid primary key,
+    id uuid primary key default gen_random_uuid(),
     application_id uuid references public.applications(id) on delete cascade,
     slot int not null check (slot between 1 and 3),
     repo_url text not null,
@@ -203,7 +203,7 @@ create table if not exists public.projects (
 
 -- 9. Audit Log
 create table if not exists public.audit_log (
-    id uuid primary key,
+    id uuid primary key default gen_random_uuid(),
     application_id uuid,
     actor_usn text,
     actor_user_id uuid,
@@ -236,6 +236,11 @@ create policy "Users can view own applications"
     on public.applications for select
     using (user_id = auth.uid());
 
+drop policy if exists "Users can update own applications" on public.applications;
+create policy "Users can update own applications"
+    on public.applications for update
+    using (user_id = auth.uid());
+
 drop policy if exists "Admins can view all applications" on public.applications;
 create policy "Admins can view all applications"
     on public.applications for select
@@ -244,6 +249,24 @@ create policy "Admins can view all applications"
 drop policy if exists "Users can view own projects" on public.projects;
 create policy "Users can view own projects"
     on public.projects for select
+    using (
+        application_id in (
+            select id from public.applications where user_id = auth.uid()
+        )
+    );
+
+drop policy if exists "Users can insert own projects" on public.projects;
+create policy "Users can insert own projects"
+    on public.projects for insert
+    with check (
+        application_id in (
+            select id from public.applications where user_id = auth.uid()
+        )
+    );
+
+drop policy if exists "Users can update own projects" on public.projects;
+create policy "Users can update own projects"
+    on public.projects for update
     using (
         application_id in (
             select id from public.applications where user_id = auth.uid()

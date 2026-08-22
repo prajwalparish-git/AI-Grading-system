@@ -15,7 +15,6 @@ export async function POST(request: Request) {
     }).eq('id', session.application_id)
 
     await supabaseAdmin.from('audit_log').insert({
-      id: crypto.randomUUID(),
       application_id: session.application_id,
       actor_usn: session.usn,
       action: 'withdraw',

@@ -48,7 +48,6 @@ export async function POST(req: Request) {
 
     // Log the action
     await adminClient.from('audit_log').insert({
-      id: crypto.randomUUID(),
       actor_user_id: user.id,
       action: 'admin_invited',
       payload: { invited_email: email }
